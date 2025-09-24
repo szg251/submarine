@@ -5,11 +5,15 @@ use scale_info_legacy::ChainTypeRegistry;
 use tracing::{Level, debug, info, warn};
 
 use crate::{
-    decoder::extrinsic::decode_extrinsic_any,
+    decoder::{
+        events::{SYSTEM_EVENT_KEY, decode_events_any},
+        extrinsic::decode_extrinsic_any,
+        storage::decode_storage_value_any,
+    },
     error::Error,
     node_rpc::{
         client::NodeRPC,
-        models::{BlockNumber, ChainMetadataBytes, ExtrinsicBytes},
+        models::{BlockNumber, ChainMetadataBytes, ExtrinsicBytes, StorageKey, StorageValueBytes},
     },
 };
 
@@ -59,7 +63,7 @@ async fn main() -> Result<(), Error> {
     let finalized_head = rpc.chain_get_header(finalized_head_hash).await?;
     info!("Finalized block number: {}", finalized_head.number);
 
-    let queried_block_number = BlockNumber(1.to_string());
+    let queried_block_number = BlockNumber(1000000.to_string());
     let block_hash = rpc.chain_get_block_hash(&queried_block_number).await?;
 
     let mut signed_block = rpc.chain_get_block(&block_hash).await?;
@@ -82,6 +86,7 @@ async fn main() -> Result<(), Error> {
     let historic_types: ChainTypeRegistry =
         serde_yaml::from_slice(&historic_type_bytes).map_err(Error::ParsingMetadataFileFailed)?;
 
+    info!("Extrinsics:");
     signed_block
         .block
         .extrinsics
@@ -97,6 +102,19 @@ async fn main() -> Result<(), Error> {
                 Err(error) => warn!("{error}"),
             };
         });
+
+    let StorageValueBytes(events_bytes) = rpc
+        .state_get_storage(&StorageKey(SYSTEM_EVENT_KEY.to_string()), &block_hash)
+        .await?;
+
+    let events = decode_events_any(
+        &historic_types,
+        events_bytes,
+        &metadata,
+        runtime_version.spec_version,
+    );
+
+    debug!("{events:?}");
 
     Ok(())
 }

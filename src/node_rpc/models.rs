@@ -2,17 +2,21 @@ use derive_more::Display;
 use hex::FromHex;
 use jsonrpsee::core::JsonValue;
 use serde::de::Error;
-use serde::{Deserialize, Deserializer};
+use serde::{Deserialize, Deserializer, Serialize};
 
 /// Block hash in nexadecimal format
-#[derive(Debug, Deserialize, Display)]
+#[derive(Debug, Clone, Serialize, Deserialize, Display)]
 pub struct BlockHash(pub String);
 
 /// Block number in hexadecimal format
-#[derive(Debug, Deserialize, Display)]
+#[derive(Debug, Clone, Serialize, Deserialize, Display)]
 pub struct BlockNumber(pub String);
 
-#[derive(Debug, Deserialize)]
+/// Block number in hexadecimal format
+#[derive(Debug, Clone, Serialize, Deserialize, Display)]
+pub struct StorageKey(pub String);
+
+#[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct BlockHeader {
     pub parent_hash: BlockHash,
@@ -22,27 +26,31 @@ pub struct BlockHeader {
     pub digest: Digest,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 pub struct Digest {
     pub logs: Vec<String>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 pub struct SignedBlock {
     pub block: Block,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 pub struct Block {
     pub header: BlockHeader,
     pub extrinsics: Vec<ExtrinsicBytes>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 #[serde(transparent)]
 pub struct ExtrinsicBytes(#[serde(deserialize_with = "deserialize_hex")] pub Vec<u8>);
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
+#[serde(transparent)]
+pub struct StorageValueBytes(#[serde(deserialize_with = "deserialize_hex")] pub Vec<u8>);
+
+#[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RuntimeVersion {
     pub spec_name: String,
@@ -52,7 +60,7 @@ pub struct RuntimeVersion {
 }
 
 /// Chain Metadata as a bytestring
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 #[serde(transparent)]
 pub struct ChainMetadataBytes(#[serde(deserialize_with = "deserialize_hex")] pub Vec<u8>);
 

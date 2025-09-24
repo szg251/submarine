@@ -7,6 +7,7 @@ use jsonrpsee::{
 pub use super::error::NodeRPCError;
 use super::models::{
     BlockHash, BlockHeader, BlockNumber, ChainMetadataBytes, RuntimeVersion, SignedBlock,
+    StorageKey, StorageValueBytes,
 };
 
 pub struct NodeRPC {
@@ -48,7 +49,7 @@ impl NodeRPC {
 
     pub async fn chain_get_header(
         &self,
-        BlockHash(header_hash): BlockHash,
+        header_hash: BlockHash,
     ) -> Result<BlockHeader, NodeRPCError> {
         self.request("chain_getHeader", rpc_params![header_hash])
             .await
@@ -64,7 +65,7 @@ impl NodeRPC {
 
     pub async fn chain_get_block_hash(
         &self,
-        BlockNumber(block_number): &BlockNumber,
+        block_number: &BlockNumber,
     ) -> Result<BlockHash, NodeRPCError> {
         self.request("chain_getBlockHash", rpc_params![block_number])
             .await
@@ -72,7 +73,7 @@ impl NodeRPC {
 
     pub async fn chain_get_block(
         &self,
-        BlockHash(block_hash): &BlockHash,
+        block_hash: &BlockHash,
     ) -> Result<SignedBlock, NodeRPCError> {
         self.request("chain_getBlock", rpc_params![block_hash])
             .await
@@ -80,7 +81,7 @@ impl NodeRPC {
 
     pub async fn state_get_metadata(
         &self,
-        BlockHash(block_hash): &BlockHash,
+        block_hash: &BlockHash,
     ) -> Result<ChainMetadataBytes, NodeRPCError> {
         self.request("state_getMetadata", rpc_params![block_hash])
             .await
@@ -88,9 +89,32 @@ impl NodeRPC {
 
     pub async fn state_get_runtime_version(
         &self,
-        BlockHash(block_hash): &BlockHash,
+        block_hash: &BlockHash,
     ) -> Result<RuntimeVersion, NodeRPCError> {
         self.request("state_getRuntimeVersion", rpc_params![block_hash])
+            .await
+    }
+
+    /// Get all storage keys of a block paginated
+    pub async fn state_get_keys_paged(
+        &self,
+        block_hash: &BlockHash,
+        per_page: u16,
+        last_key: Option<StorageKey>,
+    ) -> Result<Vec<StorageKey>, NodeRPCError> {
+        self.request(
+            "state_getKeysPaged",
+            rpc_params!["", per_page, last_key, block_hash],
+        )
+        .await
+    }
+
+    pub async fn state_get_storage(
+        &self,
+        StorageKey(storage_key): &StorageKey,
+        BlockHash(block_hash): &BlockHash,
+    ) -> Result<StorageValueBytes, NodeRPCError> {
+        self.request("state_getStorage", rpc_params![storage_key, block_hash])
             .await
     }
 }

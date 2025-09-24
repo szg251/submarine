@@ -1,7 +1,10 @@
 use thiserror::Error;
 use tracing::subscriber::SetGlobalDefaultError;
 
-use crate::{decoder::extrinsic::ExtrinsicDecoderError, node_rpc::client::NodeRPCError};
+use crate::{
+    decoder::{extrinsic::ExtrinsicDecoderError, storage::StorageValueDecoderError},
+    node_rpc::client::NodeRPCError,
+};
 
 #[allow(clippy::enum_variant_names)]
 #[derive(Debug, Error)]
@@ -14,6 +17,9 @@ pub enum Error {
 
     #[error(transparent)]
     ExtrinsicDecoderError(#[from] ExtrinsicDecoderError),
+
+    #[error(transparent)]
+    StorageKVDecoderError(#[from] StorageValueDecoderError),
 
     #[error("Failed to read metadata file: {0}")]
     ReadingMetadataFileFailed(std::io::Error),
