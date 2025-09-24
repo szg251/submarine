@@ -1,8 +1,9 @@
 use thiserror::Error;
 use tracing::subscriber::SetGlobalDefaultError;
 
-use crate::{metadata::decoder::MetadataDecoderError, node_rpc::client::NodeRPCError};
+use crate::{decoder::extrinsic::ExtrinsicDecoderError, node_rpc::client::NodeRPCError};
 
+#[allow(clippy::enum_variant_names)]
 #[derive(Debug, Error)]
 pub enum Error {
     #[error(transparent)]
@@ -12,5 +13,14 @@ pub enum Error {
     LoggingError(#[from] SetGlobalDefaultError),
 
     #[error(transparent)]
-    MetadataDecoderError(#[from] MetadataDecoderError),
+    ExtrinsicDecoderError(#[from] ExtrinsicDecoderError),
+
+    #[error("Failed to read metadata file: {0}")]
+    ReadingMetadataFileFailed(std::io::Error),
+
+    #[error("Failed to parse metadata file: {0}")]
+    ParsingMetadataFileFailed(serde_yaml::Error),
+
+    #[error("Failed to parse RuntimeMetadata: {0}")]
+    ParsingRuntimeMetadataFailed(parity_scale_codec::Error),
 }

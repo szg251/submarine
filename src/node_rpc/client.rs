@@ -5,7 +5,9 @@ use jsonrpsee::{
 };
 
 pub use super::error::NodeRPCError;
-use super::models::{BlockHash, BlockHeader, BlockNumber, ChainMetadata, SignedBlock};
+use super::models::{
+    BlockHash, BlockHeader, BlockNumber, ChainMetadataBytes, RuntimeVersion, SignedBlock,
+};
 
 pub struct NodeRPC {
     client: WsClient,
@@ -79,17 +81,16 @@ impl NodeRPC {
     pub async fn state_get_metadata(
         &self,
         BlockHash(block_hash): &BlockHash,
-    ) -> Result<ChainMetadata, NodeRPCError> {
-        let hex_string: String = self
-            .request("state_getMetadata", rpc_params![block_hash])
-            .await?;
+    ) -> Result<ChainMetadataBytes, NodeRPCError> {
+        self.request("state_getMetadata", rpc_params![block_hash])
+            .await
+    }
 
-        let bytes =
-            hex::decode(&hex_string[2..]).map_err(NodeRPCError::HexDeserializationFailed)?;
-
-        let metadata = ChainMetadata::decode(bytes)
-            .map_err(NodeRPCError::ChainMetadataDeserializationFailed)?;
-
-        Ok(metadata)
+    pub async fn state_get_runtime_version(
+        &self,
+        BlockHash(block_hash): &BlockHash,
+    ) -> Result<RuntimeVersion, NodeRPCError> {
+        self.request("state_getRuntimeVersion", rpc_params![block_hash])
+            .await
     }
 }

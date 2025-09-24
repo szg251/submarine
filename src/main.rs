@@ -1,14 +1,20 @@
 use clap::Parser;
-use tracing::{Level, debug, info};
+use frame_metadata::RuntimeMetadataPrefixed;
+use parity_scale_codec::Decode;
+use scale_info_legacy::ChainTypeRegistry;
+use tracing::{Level, debug, info, warn};
 
 use crate::{
+    decoder::extrinsic::decode_extrinsic_any,
     error::Error,
-    metadata::decoder::VersionedMetadata,
-    node_rpc::{client::NodeRPC, models::BlockNumber},
+    node_rpc::{
+        client::NodeRPC,
+        models::{BlockNumber, ChainMetadataBytes, ExtrinsicBytes},
+    },
 };
 
+mod decoder;
 mod error;
-mod metadata;
 mod node_rpc;
 
 /// Infinity Query command line interface
@@ -53,18 +59,44 @@ async fn main() -> Result<(), Error> {
     let finalized_head = rpc.chain_get_header(finalized_head_hash).await?;
     info!("Finalized block number: {}", finalized_head.number);
 
-    let queried_block_number = BlockNumber(0.to_string());
+    let queried_block_number = BlockNumber(1.to_string());
     let block_hash = rpc.chain_get_block_hash(&queried_block_number).await?;
 
-    // let block = rpc.chain_get_block(&block_hash).await?;
+    let mut signed_block = rpc.chain_get_block(&block_hash).await?;
     info!("Hash of block #{queried_block_number}: {block_hash}");
 
-    let metadata = rpc.state_get_metadata(&block_hash).await?;
-    info!("Metadata version: {:?}", metadata.version);
+    let runtime_version = rpc.state_get_runtime_version(&block_hash).await?;
 
-    let decoded = VersionedMetadata::decode(metadata.version, &mut &metadata.data[..])?;
+    let ChainMetadataBytes(metadata_bytes) = rpc.state_get_metadata(&block_hash).await?;
 
-    debug!("{decoded:?}");
+    let RuntimeMetadataPrefixed(_, metadata) =
+        RuntimeMetadataPrefixed::decode(&mut &metadata_bytes[..])
+            .map_err(Error::ParsingRuntimeMetadataFailed)?;
+
+    info!("Metadata version: {:?}", metadata.version());
+
+    debug!("{metadata:?}");
+
+    let historic_type_bytes =
+        std::fs::read("types/polkadot_types.yaml").map_err(Error::ReadingMetadataFileFailed)?;
+    let historic_types: ChainTypeRegistry =
+        serde_yaml::from_slice(&historic_type_bytes).map_err(Error::ParsingMetadataFileFailed)?;
+
+    signed_block
+        .block
+        .extrinsics
+        .iter_mut()
+        .for_each(|ExtrinsicBytes(ext)| {
+            match decode_extrinsic_any(
+                &historic_types,
+                ext,
+                &metadata,
+                runtime_version.spec_version,
+            ) {
+                Ok(extrinsic) => info!("{extrinsic:?}"),
+                Err(error) => warn!("{error}"),
+            };
+        });
 
     Ok(())
 }

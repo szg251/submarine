@@ -1,10 +1,10 @@
 use derive_more::Display;
+use hex::FromHex;
 use jsonrpsee::core::JsonValue;
-use serde::Deserialize;
+use serde::de::Error;
+use serde::{Deserialize, Deserializer};
 
-use crate::node_rpc::error::ChainMetadataDeserializationError;
-
-/// Block hash is hexadecimal format
+/// Block hash in nexadecimal format
 #[derive(Debug, Deserialize, Display)]
 pub struct BlockHash(pub String);
 
@@ -35,8 +35,12 @@ pub struct SignedBlock {
 #[derive(Debug, Deserialize)]
 pub struct Block {
     pub header: BlockHeader,
-    pub extrinsics: Vec<String>,
+    pub extrinsics: Vec<ExtrinsicBytes>,
 }
+
+#[derive(Debug, Deserialize)]
+#[serde(transparent)]
+pub struct ExtrinsicBytes(#[serde(deserialize_with = "deserialize_hex")] pub Vec<u8>);
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -47,35 +51,18 @@ pub struct RuntimeVersion {
     pub spec_version: u64,
 }
 
-#[derive(Debug)]
-pub struct ChainMetadata {
-    pub version: u8,
-    // pub magic: u32,
-    pub data: Vec<u8>,
-}
+/// Chain Metadata as a bytestring
+#[derive(Debug, Deserialize)]
+#[serde(transparent)]
+pub struct ChainMetadataBytes(#[serde(deserialize_with = "deserialize_hex")] pub Vec<u8>);
 
-impl ChainMetadata {
-    /// Decodes a chain metadata object from raw bytes
-    /// For performance optimization, this will consume the original vector
-    pub fn decode(mut bytes: Vec<u8>) -> Result<Self, ChainMetadataDeserializationError> {
-        if bytes.len() < 5 {
-            return Err(ChainMetadataDeserializationError::BytestringTooShort {
-                length: bytes.len(),
-            });
-        }
+/// Deserialize a hexadecimal string with an optional 0x prefix info a bytestring
+pub fn deserialize_hex<'de, D>(deserializer: D) -> Result<Vec<u8>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let s: String = String::deserialize(deserializer)?;
+    let s = s.strip_prefix("0x").unwrap_or(&s);
 
-        // let magic_bytes: [u8; 4] = (&bytes[0..4]).try_into().unwrap();
-        // let magic = u32::from_le_bytes(magic_bytes);
-
-        // The version is the 5th byte (index 4) after the 4-byte magic number ('meta').
-        let version = bytes[4];
-
-        bytes.drain(..5);
-
-        Ok(Self {
-            version,
-            // magic,
-            data: bytes,
-        })
-    }
+    Vec::from_hex(s).map_err(|e| D::Error::custom(format!("Hex decoding error: {e}")))
 }
