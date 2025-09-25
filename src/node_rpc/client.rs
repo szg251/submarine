@@ -4,10 +4,12 @@ use jsonrpsee::{
     ws_client::{WsClient, WsClientBuilder},
 };
 
+use crate::node_rpc::models::SyncState;
+
 pub use super::error::NodeRPCError;
 use super::models::{
-    BlockHash, BlockHeader, BlockNumber, ChainMetadataBytes, RuntimeVersion, SignedBlock,
-    StorageKey, StorageValueBytes,
+    BlockHashHex, BlockHeader, BlockNumberHex, ChainMetadataBytes, RuntimeVersion, SignedBlock,
+    StorageKeyHex, StorageValueBytes,
 };
 
 pub struct NodeRPC {
@@ -32,7 +34,10 @@ impl NodeRPC {
         self.client
             .request(method, params)
             .await
-            .map_err(NodeRPCError::RequestFailed)
+            .map_err(|source| NodeRPCError::RequestFailed {
+                method: method.to_string(),
+                source,
+            })
     }
 
     pub async fn system_chain(&self) -> Result<String, NodeRPCError> {
@@ -47,33 +52,33 @@ impl NodeRPC {
         self.request("system_version", rpc_params![]).await
     }
 
+    pub async fn system_sync_state(&self) -> Result<SyncState, NodeRPCError> {
+        self.request("system_syncState", rpc_params![]).await
+    }
+
     pub async fn chain_get_header(
         &self,
-        header_hash: BlockHash,
+        header_hash: BlockHashHex,
     ) -> Result<BlockHeader, NodeRPCError> {
         self.request("chain_getHeader", rpc_params![header_hash])
             .await
     }
 
-    pub async fn chain_get_last_header(&self) -> Result<BlockHeader, NodeRPCError> {
-        self.request("chain_getHeader", rpc_params![]).await
-    }
-
-    pub async fn chain_get_finalized_head(&self) -> Result<BlockHash, NodeRPCError> {
+    pub async fn chain_get_finalized_head(&self) -> Result<BlockHashHex, NodeRPCError> {
         self.request("chain_getFinalizedHead", rpc_params![]).await
     }
 
     pub async fn chain_get_block_hash(
         &self,
-        block_number: &BlockNumber,
-    ) -> Result<BlockHash, NodeRPCError> {
+        block_number: &BlockNumberHex,
+    ) -> Result<BlockHashHex, NodeRPCError> {
         self.request("chain_getBlockHash", rpc_params![block_number])
             .await
     }
 
     pub async fn chain_get_block(
         &self,
-        block_hash: &BlockHash,
+        block_hash: &BlockHashHex,
     ) -> Result<SignedBlock, NodeRPCError> {
         self.request("chain_getBlock", rpc_params![block_hash])
             .await
@@ -81,7 +86,7 @@ impl NodeRPC {
 
     pub async fn state_get_metadata(
         &self,
-        block_hash: &BlockHash,
+        block_hash: &BlockHashHex,
     ) -> Result<ChainMetadataBytes, NodeRPCError> {
         self.request("state_getMetadata", rpc_params![block_hash])
             .await
@@ -89,7 +94,7 @@ impl NodeRPC {
 
     pub async fn state_get_runtime_version(
         &self,
-        block_hash: &BlockHash,
+        block_hash: &BlockHashHex,
     ) -> Result<RuntimeVersion, NodeRPCError> {
         self.request("state_getRuntimeVersion", rpc_params![block_hash])
             .await
@@ -98,10 +103,10 @@ impl NodeRPC {
     /// Get all storage keys of a block paginated
     pub async fn state_get_keys_paged(
         &self,
-        block_hash: &BlockHash,
+        block_hash: &BlockHashHex,
         per_page: u16,
-        last_key: Option<StorageKey>,
-    ) -> Result<Vec<StorageKey>, NodeRPCError> {
+        last_key: Option<StorageKeyHex>,
+    ) -> Result<Vec<StorageKeyHex>, NodeRPCError> {
         self.request(
             "state_getKeysPaged",
             rpc_params!["", per_page, last_key, block_hash],
@@ -111,9 +116,9 @@ impl NodeRPC {
 
     pub async fn state_get_storage(
         &self,
-        StorageKey(storage_key): &StorageKey,
-        BlockHash(block_hash): &BlockHash,
-    ) -> Result<StorageValueBytes, NodeRPCError> {
+        storage_key: &StorageKeyHex,
+        block_hash: &BlockHashHex,
+    ) -> Result<Option<StorageValueBytes>, NodeRPCError> {
         self.request("state_getStorage", rpc_params![storage_key, block_hash])
             .await
     }

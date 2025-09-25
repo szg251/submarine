@@ -12,6 +12,29 @@ pub enum AnyExtrinsic<'info> {
     Modern(Extrinsic<'info, u32>),
 }
 
+impl<'info> AnyExtrinsic<'info> {
+    pub fn pallet_name(&self) -> &str {
+        match self {
+            AnyExtrinsic::Legacy(ext) => ext.pallet_name(),
+            AnyExtrinsic::Modern(ext) => ext.pallet_name(),
+        }
+    }
+
+    pub fn call_name(&self) -> &str {
+        match self {
+            AnyExtrinsic::Legacy(ext) => ext.call_name(),
+            AnyExtrinsic::Modern(ext) => ext.call_name(),
+        }
+    }
+
+    // pub fn hash(&self) -> Option<&str> {
+    //     match self {
+    //         AnyExtrinsic::Legacy(_) => None,
+    //         // AnyExtrinsic::Modern(ext) => ext.
+    //     }
+    // }
+}
+
 #[derive(Debug, Error)]
 pub enum ExtrinsicDecoderError {
     #[error(transparent)]

@@ -2,7 +2,10 @@ use thiserror::Error;
 use tracing::subscriber::SetGlobalDefaultError;
 
 use crate::{
-    decoder::{extrinsic::ExtrinsicDecoderError, storage::StorageValueDecoderError},
+    decoder::{
+        extrinsic::ExtrinsicDecoderError,
+        storage::{StorageKeyEncoderError, StorageValueDecoderError},
+    },
     node_rpc::client::NodeRPCError,
 };
 
@@ -19,7 +22,19 @@ pub enum Error {
     ExtrinsicDecoderError(#[from] ExtrinsicDecoderError),
 
     #[error(transparent)]
-    StorageKVDecoderError(#[from] StorageValueDecoderError),
+    StorageKeyEncoderError(#[from] StorageKeyEncoderError),
+
+    #[error(transparent)]
+    StorageValueDecoderError(#[from] StorageValueDecoderError),
+
+    #[error("Storage value not found for key {0}")]
+    StorageValueNotFound(String),
+
+    #[error("Timestamp storage value has an unexpected type")]
+    TimestampValueUnexpectedType,
+
+    #[error("Timestamp storage value has an invalid value")]
+    TimestampValueInvalid,
 
     #[error("Failed to read metadata file: {0}")]
     ReadingMetadataFileFailed(std::io::Error),

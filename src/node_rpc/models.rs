@@ -4,23 +4,35 @@ use jsonrpsee::core::JsonValue;
 use serde::de::Error;
 use serde::{Deserialize, Deserializer, Serialize};
 
-/// Block hash in nexadecimal format
-#[derive(Debug, Clone, Serialize, Deserialize, Display)]
-pub struct BlockHash(pub String);
+/// Block hash as hexadecimal string
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Display)]
+pub struct BlockHashHex(pub String);
 
-/// Block number in hexadecimal format
-#[derive(Debug, Clone, Serialize, Deserialize, Display)]
-pub struct BlockNumber(pub String);
+/// Block number as hexadecimal string
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Display)]
+pub struct BlockNumberHex(pub String);
 
-/// Block number in hexadecimal format
-#[derive(Debug, Clone, Serialize, Deserialize, Display)]
-pub struct StorageKey(pub String);
+impl From<u64> for BlockNumberHex {
+    fn from(value: u64) -> Self {
+        Self(format!("0x{value:x}"))
+    }
+}
+
+/// Block number as hexadecimal string
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Display)]
+pub struct StorageKeyHex(pub String);
+
+impl From<Vec<u8>> for StorageKeyHex {
+    fn from(value: Vec<u8>) -> Self {
+        Self(format!("0x{}", hex::encode(value)))
+    }
+}
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct BlockHeader {
-    pub parent_hash: BlockHash,
-    pub number: BlockNumber,
+    pub parent_hash: BlockHashHex,
+    pub number: BlockNumberHex,
     pub state_root: String,
     pub extrinsics_root: String,
     pub digest: Digest,
@@ -57,6 +69,14 @@ pub struct RuntimeVersion {
     pub impl_name: String,
     pub apis: Vec<JsonValue>,
     pub spec_version: u64,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SyncState {
+    pub starting_block: u64,
+    pub current_block: u64,
+    pub highest_block: u64,
 }
 
 /// Chain Metadata as a bytestring

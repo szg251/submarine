@@ -5,6 +5,7 @@ edition = "2024"
 
 [dependencies]
 anyhow = "1.0.100"
+chrono = "0.4.42"
 clap = { version = "4.5.48", features = ["derive"] }
 derive_more = { version = "2.0.1", features = ["display"] }
 frame-decode = { version = "0.10.0", features = ["legacy"] }
@@ -12,6 +13,7 @@ frame-metadata = { version = "23.0.0", features = ["legacy", "serde"] }
 hex = "0.4.3"
 jsonrpsee = { version = "0.26.0", features = ["async-client", "ws-client"] }
 parity-scale-codec = "3.7.5"
+prettytable-rs = "0.10.0"
 rayon = "1.11.0"
 scale-info-legacy = { version = "0.2.2", default-features = false }
 serde = { version = "1.0.226", features = ["derive"] }
