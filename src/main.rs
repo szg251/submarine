@@ -8,7 +8,7 @@ use tracing::{Instrument, Level, debug, info, span, warn};
 
 use crate::{
     decoder::{
-        events::{SYSTEM_EVENTS_KEY, decode_events_any},
+        events::{Phase, SYSTEM_EVENTS_KEY, decode_events_any},
         extrinsic::decode_extrinsic_any,
         storage::{AnyStorageValue, decode_storage_value_any, encode_storage_key_any},
     },
@@ -99,10 +99,10 @@ async fn fetch_block(rpc: &NodeRPC, block_number: u64) -> Result<(), Error> {
         RuntimeMetadataPrefixed::decode(&mut &metadata_bytes[..])
             .map_err(Error::ParsingRuntimeMetadataFailed)?;
 
-    debug!("Metadata: {metadata:?}");
+    debug!(?metadata);
 
     let mut signed_block = rpc.chain_get_block(&block_hash).await?;
-    debug!("Signed block: {signed_block:?}");
+    debug!(?signed_block);
 
     let runtime_version = rpc.state_get_runtime_version(&block_hash).await?;
 
@@ -151,7 +151,7 @@ async fn fetch_block(rpc: &NodeRPC, block_number: u64) -> Result<(), Error> {
                     let extrinsic_id = format!("{block_number}-{i}");
                     let action = format!("{} ({})", extrinsic.pallet_name(), extrinsic.call_name());
                     extrinsics_table.add_row(row![extrinsic_id, "hash", "time", "result", action]);
-                    debug!("Extrinsic: {extrinsic:?}");
+                    debug!(?extrinsic);
                 }
                 Err(error) => warn!("{error}"),
             };
@@ -162,6 +162,7 @@ async fn fetch_block(rpc: &NodeRPC, block_number: u64) -> Result<(), Error> {
 
     fetch_events(
         rpc,
+        block_number,
         &block_hash,
         &historic_types,
         &metadata,
@@ -219,6 +220,7 @@ async fn fetch_timestamp(
 
 async fn fetch_events(
     rpc: &NodeRPC,
+    block_number: u64,
     block_hash: &BlockHashHex,
     historic_types: &ChainTypeRegistry,
     metadata: &RuntimeMetadata,
@@ -226,18 +228,36 @@ async fn fetch_events(
 ) -> Result<(), Error> {
     let system_events_key_hex = StorageKeyHex(SYSTEM_EVENTS_KEY.to_string());
 
+    let mut events_table = Table::new();
+    events_table.set_format(*prettytable::format::consts::FORMAT_NO_LINESEP_WITH_TITLE);
+
     if let Some(StorageValueBytes(events_bytes)) = rpc
         .state_get_storage(&system_events_key_hex, block_hash)
         .await?
     {
-        let events = decode_events_any(
+        decode_events_any(
             events_bytes,
             historic_types,
             metadata,
             runtime_version.spec_version,
-        )?;
-
-        debug!("{events:?}");
+        )?
+        .iter()
+        .enumerate()
+        .for_each(|(i, event)| {
+            let event_id = format!("{block_number}-{i}");
+            let ext_id = match event.phase {
+                Phase::ApplyExtrinsic(ext_idx) => Some(format!("{block_number}-{ext_idx}")),
+                _ => None,
+            }
+            .unwrap_or(String::from("-"));
+            let action = format!("{} ({})", event.event.name, event.event.action);
+            events_table.add_row(row![event_id, ext_id, action, "type"]);
+            debug!(?event);
+        });
     }
+
+    println!("Events");
+    events_table.printstd();
+
     Ok(())
 }

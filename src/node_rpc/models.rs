@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 use derive_more::Display;
 use hex::FromHex;
 use jsonrpsee::core::JsonValue;

@@ -4,7 +4,7 @@ use frame_decode::{
 };
 use frame_metadata::RuntimeMetadata;
 use scale_info_legacy::{ChainTypeRegistry, LookupName};
-use subxt::{dynamic::Value, ext::scale_value::scale::ValueVisitor};
+use scale_value::{Value, scale::ValueVisitor};
 use thiserror::Error;
 
 #[derive(Debug)]
@@ -223,6 +223,13 @@ pub fn decode_storage_value_any(
             let mut historic_types_for_spec = historic_types.for_spec_version(spec_version);
             let types_from_metadata = type_registry_from_metadata(metadata)?;
             historic_types_for_spec.prepend(types_from_metadata);
+
+            let keys: [u8; 0] = [];
+            let key =
+                encode_storage_key("System", "Events", keys, metadata, &historic_types_for_spec)
+                    .unwrap();
+
+            println!("{:?}", hex::encode(key));
 
             Ok(AnyStorageValue::Legacy(Box::new(decode_storage_value(
                 pallet_name,

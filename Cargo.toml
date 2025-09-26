@@ -15,10 +15,12 @@ jsonrpsee = { version = "0.26.0", features = ["async-client", "ws-client"] }
 parity-scale-codec = "3.7.5"
 prettytable-rs = "0.10.0"
 rayon = "1.11.0"
+scale-decode = "0.16.0"
 scale-info-legacy = { version = "0.2.2", default-features = false }
+scale-value = "0.18.0"
 serde = { version = "1.0.226", features = ["derive"] }
+serde_json = "1.0.145"
 serde_yaml = "0.9.34"
-subxt = "0.44.0"
 subxt-signer = "0.44.0"
 thiserror = "2.0.16"
 tokio = { version = "1.47.1", features = ["rt-multi-thread"] }

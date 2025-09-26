@@ -3,6 +3,7 @@ use tracing::subscriber::SetGlobalDefaultError;
 
 use crate::{
     decoder::{
+        events::EventDecoderError,
         extrinsic::ExtrinsicDecoderError,
         storage::{StorageKeyEncoderError, StorageValueDecoderError},
     },
@@ -35,6 +36,9 @@ pub enum Error {
 
     #[error("Timestamp storage value has an invalid value")]
     TimestampValueInvalid,
+
+    #[error(transparent)]
+    EventDecoderError(#[from] EventDecoderError),
 
     #[error("Failed to read metadata file: {0}")]
     ReadingMetadataFileFailed(std::io::Error),

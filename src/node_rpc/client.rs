@@ -16,6 +16,7 @@ pub struct NodeRPC {
     client: WsClient,
 }
 
+#[allow(dead_code)]
 impl NodeRPC {
     pub async fn new(url: &str) -> Result<Self, NodeRPCError> {
         let client = WsClientBuilder::default()
