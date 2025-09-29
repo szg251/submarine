@@ -3,7 +3,7 @@ use frame_decode::{
     helpers::type_registry_from_metadata,
 };
 use frame_metadata::RuntimeMetadata;
-use scale_info_legacy::{ChainTypeRegistry, LookupName};
+use scale_info_legacy::LookupName;
 use thiserror::Error;
 
 #[derive(Debug)]
@@ -49,11 +49,11 @@ pub enum ExtrinsicDecoderError {
 
 /// Decodes any version of extrinsic
 pub fn decode_extrinsic_any<'info>(
-    historic_types: &ChainTypeRegistry,
     ext: impl AsRef<[u8]>,
     metadata: &'info RuntimeMetadata,
     spec_version: u64,
 ) -> Result<AnyExtrinsic<'info>, ExtrinsicDecoderError> {
+    let historic_types = frame_decode::legacy_types::polkadot::relay_chain();
     let ext = &mut ext.as_ref();
 
     match metadata {

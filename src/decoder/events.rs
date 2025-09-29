@@ -1,9 +1,9 @@
 use std::collections::HashMap;
 
 use frame_metadata::RuntimeMetadata;
-use scale_info_legacy::ChainTypeRegistry;
 use scale_value::{Composite, Primitive, Value, ValueDef, Variant};
 use thiserror::Error;
+use tracing::debug;
 
 use crate::decoder::storage::{
     AnyStorageValue, StorageValueDecoderError, decode_storage_value_any,
@@ -14,11 +14,25 @@ pub const SYSTEM_EVENTS_KEY: &str =
 
 #[derive(Debug, Error)]
 pub enum EventDecoderError {
-    #[error("Shape of SCALE value is unexpected at {span}")]
-    UnexpectedValueShape { span: String },
+    #[error("Value type {expected}, but got {got} at {span}")]
+    UnexpectedValueType {
+        span: String,
+        expected: String,
+        got: String,
+    },
 
-    #[error("Unexpected variant name at {variant_name}: {span}")]
+    #[error("Unexpected variant name {variant_name} at {span}")]
     UnexpectedVariantName { variant_name: String, span: String },
+
+    #[error("We expected a vector of {expected} items, got {got} at {span}")]
+    UnexpectedVectorLength {
+        expected: usize,
+        got: usize,
+        span: String,
+    },
+
+    #[error("Couldn't find record field {field_name} at {span}")]
+    RecordFieldNotFound { field_name: String, span: String },
 
     #[error("StoageValue decoder error at {span}: {source}")]
     StorageValueDecodingFailed {
@@ -57,61 +71,48 @@ trait WithErrorSpan {
 
 impl<T> WithErrorSpan for Result<T, EventDecoderError> {
     fn add_error_span(self, outer_span: &str) -> Self {
-        self.map_err(|err| match err {
-            EventDecoderError::UnexpectedValueShape { span } => {
-                let span = if !span.is_empty() {
-                    format!("{outer_span}.{span}")
-                } else {
-                    outer_span.to_string()
-                };
-                EventDecoderError::UnexpectedValueShape { span }
-            }
-
-            EventDecoderError::UnexpectedVariantName { variant_name, span } => {
-                let span = if !span.is_empty() {
-                    format!("{outer_span}.{span}")
-                } else {
-                    outer_span.to_string()
-                };
-                EventDecoderError::UnexpectedVariantName { variant_name, span }
-            }
-
-            EventDecoderError::StorageValueDecodingFailed { source, span } => {
-                let span = if !span.is_empty() {
-                    format!("{outer_span}.{span}")
-                } else {
-                    outer_span.to_string()
-                };
-                EventDecoderError::StorageValueDecodingFailed { source, span }
-            }
-
-            EventDecoderError::ValueDeserializerError { source, span } => {
-                let span = if !span.is_empty() {
-                    format!("{outer_span}.{span}")
-                } else {
-                    outer_span.to_string()
-                };
-                EventDecoderError::ValueDeserializerError { source, span }
-            }
+        self.map_err(|mut err| {
+            match &mut err {
+                EventDecoderError::UnexpectedValueType { span, .. } => {
+                    *span = append_span(&span, outer_span);
+                }
+                EventDecoderError::UnexpectedVariantName { span, .. } => {
+                    *span = append_span(&span, outer_span);
+                }
+                EventDecoderError::RecordFieldNotFound { span, .. } => {
+                    *span = append_span(&span, outer_span);
+                }
+                EventDecoderError::StorageValueDecodingFailed { span, .. } => {
+                    *span = append_span(&span, outer_span);
+                }
+                EventDecoderError::ValueDeserializerError { span, .. } => {
+                    *span = append_span(&span, outer_span);
+                }
+                EventDecoderError::UnexpectedVectorLength { span, .. } => {
+                    *span = append_span(&span, outer_span);
+                }
+            };
+            err
         })
+    }
+}
+
+fn append_span(inner_span: &str, outer_span: &str) -> String {
+    if !inner_span.is_empty() {
+        format!("{outer_span}.{inner_span}")
+    } else {
+        outer_span.to_string()
     }
 }
 
 /// Decodes any version of System.Events storage value
 pub fn decode_events_any(
     events_bytes: impl AsRef<[u8]>,
-    historic_types: &ChainTypeRegistry,
     metadata: &RuntimeMetadata,
     spec_version: u64,
 ) -> Result<Vec<EventRecord>, EventDecoderError> {
-    let raw_value = decode_storage_value_any(
-        events_bytes,
-        "System",
-        "Events",
-        historic_types,
-        metadata,
-        spec_version,
-    )?;
+    let raw_value =
+        decode_storage_value_any(events_bytes, "System", "Events", metadata, spec_version)?;
 
     match raw_value {
         AnyStorageValue::Legacy(value) => parse_events(*value).add_error_span("events"),
@@ -119,7 +120,10 @@ pub fn decode_events_any(
     }
 }
 
-fn parse_events<T>(value: Value<T>) -> Result<Vec<EventRecord>, EventDecoderError> {
+fn parse_events<T>(value: Value<T>) -> Result<Vec<EventRecord>, EventDecoderError>
+where
+    T: std::fmt::Debug,
+{
     parse_vec(value)?
         .into_iter()
         .map(parse_event_record)
@@ -127,12 +131,16 @@ fn parse_events<T>(value: Value<T>) -> Result<Vec<EventRecord>, EventDecoderErro
         .add_error_span("event_record")
 }
 
-fn parse_event_record<T>(value: Value<T>) -> Result<EventRecord, EventDecoderError> {
+fn parse_event_record<T>(value: Value<T>) -> Result<EventRecord, EventDecoderError>
+where
+    T: std::fmt::Debug,
+{
     let mut record = parse_record(value)?;
 
     let phase = record
         .remove("phase")
-        .ok_or(EventDecoderError::UnexpectedValueShape {
+        .ok_or(EventDecoderError::RecordFieldNotFound {
+            field_name: "phase".to_string(),
             span: String::new(),
         })
         .and_then(parse_phase)
@@ -140,7 +148,8 @@ fn parse_event_record<T>(value: Value<T>) -> Result<EventRecord, EventDecoderErr
 
     let event = record
         .remove("event")
-        .ok_or(EventDecoderError::UnexpectedValueShape {
+        .ok_or(EventDecoderError::RecordFieldNotFound {
+            field_name: "event".to_string(),
             span: String::new(),
         })
         .and_then(parse_event)
@@ -148,7 +157,8 @@ fn parse_event_record<T>(value: Value<T>) -> Result<EventRecord, EventDecoderErr
 
     let topics = record
         .remove("topics")
-        .ok_or(EventDecoderError::UnexpectedValueShape {
+        .ok_or(EventDecoderError::RecordFieldNotFound {
+            field_name: "topics".to_string(),
             span: String::new(),
         })
         .and_then(parse_vec)
@@ -162,32 +172,47 @@ fn parse_event_record<T>(value: Value<T>) -> Result<EventRecord, EventDecoderErr
     })
 }
 
-fn parse_vec<T>(value: Value<T>) -> Result<Vec<Value<T>>, EventDecoderError> {
+fn parse_vec<T>(value: Value<T>) -> Result<Vec<Value<T>>, EventDecoderError>
+where
+    T: std::fmt::Debug,
+{
     match value.value {
         ValueDef::Composite(Composite::Unnamed(vec)) => Ok(vec),
-        _ => Err(EventDecoderError::UnexpectedValueShape {
+        other => Err(EventDecoderError::UnexpectedValueType {
+            expected: "ValueDef::Composite(Composite::Unnamed(_))".to_string(),
+            got: format!("{other:?}"),
             span: String::new(),
         }),
     }
 }
 
-fn parse_record<T>(value: Value<T>) -> Result<HashMap<String, Value<T>>, EventDecoderError> {
+fn parse_record<T>(value: Value<T>) -> Result<HashMap<String, Value<T>>, EventDecoderError>
+where
+    T: std::fmt::Debug,
+{
     match value.value {
         ValueDef::Composite(Composite::Named(named)) => {
             Ok(named.into_iter().collect::<HashMap<_, _>>())
         }
-        _ => Err(EventDecoderError::UnexpectedValueShape {
+        other => Err(EventDecoderError::UnexpectedValueType {
+            expected: "ValueDef::Composite(Composite::Named(_))".to_string(),
+            got: format!("{other:?}"),
             span: String::new(),
         }),
     }
 }
 
-fn parse_phase<T>(value: Value<T>) -> Result<Phase, EventDecoderError> {
+fn parse_phase<T>(value: Value<T>) -> Result<Phase, EventDecoderError>
+where
+    T: std::fmt::Debug,
+{
     match value.value {
         ValueDef::Variant(Variant { name, values }) => match &name[..] {
             "ApplyExtrinsic" => match values {
                 Composite::Unnamed(mut vec) => {
-                    let fst = vec.pop().ok_or(EventDecoderError::UnexpectedValueShape {
+                    let fst = vec.pop().ok_or(EventDecoderError::UnexpectedVectorLength {
+                        expected: 1,
+                        got: vec.len(),
                         span: String::new(),
                     })?;
 
@@ -201,22 +226,28 @@ fn parse_phase<T>(value: Value<T>) -> Result<Phase, EventDecoderError> {
                         }),
                     }
                 }
-                _ => Err(EventDecoderError::UnexpectedValueShape {
+                other => Err(EventDecoderError::UnexpectedValueType {
                     span: String::new(),
+                    expected: "Composite::Unnamed(_)".to_string(),
+                    got: format!("{other:?}"),
                 }),
             }
             .add_error_span("ApplyExtrinsic"),
             "Finalization" => match values {
                 Composite::Unnamed(_) => Ok(Phase::Finalization),
-                _ => Err(EventDecoderError::UnexpectedValueShape {
+                other => Err(EventDecoderError::UnexpectedValueType {
                     span: String::new(),
+                    expected: "Composite::Unnamed(_)".to_string(),
+                    got: format!("{other:?}"),
                 }),
             }
             .add_error_span("Finalization"),
             "Initialization" => match values {
                 Composite::Unnamed(_) => Ok(Phase::Finalization),
-                _ => Err(EventDecoderError::UnexpectedValueShape {
+                other => Err(EventDecoderError::UnexpectedValueType {
                     span: String::new(),
+                    expected: "Composite::Unnamed(_)".to_string(),
+                    got: format!("{other:?}"),
                 }),
             }
             .add_error_span("Initialization"),
@@ -225,31 +256,34 @@ fn parse_phase<T>(value: Value<T>) -> Result<Phase, EventDecoderError> {
                 span: String::new(),
             }),
         },
-        _ => Err(EventDecoderError::UnexpectedValueShape {
+        other => Err(EventDecoderError::UnexpectedValueType {
             span: String::new(),
+            expected: "ValueDef::Variant(Variant { .. }) ".to_string(),
+            got: format!("{other:?}"),
         }),
     }
 }
 
-fn parse_event<T>(value: Value<T>) -> Result<Event, EventDecoderError> {
+fn parse_event<T>(value: Value<T>) -> Result<Event, EventDecoderError>
+where
+    T: std::fmt::Debug,
+{
     match value.value {
         ValueDef::Variant(Variant {
             name,
             values: Composite::Unnamed(mut vec),
         }) => {
-            let fst = vec.pop().ok_or(EventDecoderError::UnexpectedValueShape {
+            let fst = vec.pop().ok_or(EventDecoderError::UnexpectedVectorLength {
+                expected: 1,
+                got: vec.len(),
                 span: String::new(),
             })?;
             let (action, params) = match fst.value {
-                ValueDef::Variant(Variant {
-                    name,
-                    values: Composite::Unnamed(vec),
-                }) => Ok((
-                    name,
-                    vec.iter().map(scale_value::stringify::to_string).collect(),
-                )),
-                _ => Err(EventDecoderError::UnexpectedValueShape {
+                ValueDef::Variant(Variant { name, values }) => Ok((name, values.to_string())),
+                other => Err(EventDecoderError::UnexpectedValueType {
                     span: String::new(),
+                    expected: "ValueDef::Variant(Variant { .. })".to_string(),
+                    got: format!("{other:?}"),
                 }),
             }?;
             Ok(Event {
@@ -258,8 +292,11 @@ fn parse_event<T>(value: Value<T>) -> Result<Event, EventDecoderError> {
                 params,
             })
         }
-        _ => Err(EventDecoderError::UnexpectedValueShape {
+        other => Err(EventDecoderError::UnexpectedValueType {
             span: String::new(),
+            expected: "ValueDef::Variant(Variant { name, values: Composite::Unnamed(_) })"
+                .to_string(),
+            got: format!("{other:?}"),
         }),
     }
 }
@@ -282,15 +319,5 @@ pub struct EventRecord {
 pub struct Event {
     pub name: String,
     pub action: String,
-    pub params: Vec<String>,
+    pub params: String,
 }
-
-// value: Composite(
-//   Unnamed(
-//     [ Value {
-//       value: Composite(Named([
-//       ("phase", Value { value: Variant(Variant { name: "ApplyExtrinsic", values: Unnamed([Value { value: Primitive(U128(0)), context: u32 }]) }), context: Phase }),
-//       ("event", Value { value: Variant(Variant { name: "System", values: Unnamed([Value { value: Variant(Variant { name: "ExtrinsicSuccess", values: Unnamed([Value { value: Composite(Named([("weight", Value { value: Primitive(U128(158000000)), context: Weight }), ("class", Value { value: Variant(Variant { name: "Mandatory", values: Unnamed([]) }), context: DispatchClass }), ("paysFee", Value { value: Variant(Variant { name: "Yes", values: Unnamed([]) }), context: Pays })])), context: DispatchInfo }]) }), context: builtin::module::event::System }]) }), context: T::Event })
-//       , ("topics", Value { value: Composite(Unnamed([])), context: Vec<T::Hash> })
-//
-//       ])), context: EventRecord<T::Event, T::Hash> }

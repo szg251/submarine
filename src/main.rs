@@ -3,7 +3,6 @@ use clap::Parser;
 use frame_metadata::{RuntimeMetadata, RuntimeMetadataPrefixed};
 use parity_scale_codec::Decode;
 use prettytable::{Table, row, table};
-use scale_info_legacy::ChainTypeRegistry;
 use tracing::{Instrument, Level, debug, info, span, warn};
 
 use crate::{
@@ -85,11 +84,6 @@ async fn main() -> Result<(), Error> {
 }
 
 async fn fetch_block(rpc: &NodeRPC, block_number: u64) -> Result<(), Error> {
-    let historic_type_bytes =
-        std::fs::read("types/polkadot_types.yaml").map_err(Error::ReadingMetadataFileFailed)?;
-    let historic_types: ChainTypeRegistry =
-        serde_yaml::from_slice(&historic_type_bytes).map_err(Error::ParsingMetadataFileFailed)?;
-
     let queried_block_number = BlockNumberHex::from(block_number);
     let block_hash = rpc.chain_get_block_hash(&queried_block_number).await?;
 
@@ -106,14 +100,7 @@ async fn fetch_block(rpc: &NodeRPC, block_number: u64) -> Result<(), Error> {
 
     let runtime_version = rpc.state_get_runtime_version(&block_hash).await?;
 
-    let timestamp = fetch_timestamp(
-        rpc,
-        &block_hash,
-        &historic_types,
-        &metadata,
-        &runtime_version,
-    )
-    .await?;
+    let timestamp = fetch_timestamp(rpc, &block_hash, &metadata, &runtime_version).await?;
 
     let mut block_table = table![
         ["Timestamp", timestamp],
@@ -141,12 +128,7 @@ async fn fetch_block(rpc: &NodeRPC, block_number: u64) -> Result<(), Error> {
         .iter_mut()
         .enumerate()
         .for_each(|(i, ExtrinsicBytes(ext))| {
-            match decode_extrinsic_any(
-                &historic_types,
-                ext,
-                &metadata,
-                runtime_version.spec_version,
-            ) {
+            match decode_extrinsic_any(ext, &metadata, runtime_version.spec_version) {
                 Ok(extrinsic) => {
                     let extrinsic_id = format!("{block_number}-{i}");
                     let action = format!("{} ({})", extrinsic.pallet_name(), extrinsic.call_name());
@@ -160,15 +142,7 @@ async fn fetch_block(rpc: &NodeRPC, block_number: u64) -> Result<(), Error> {
     println!("Extrinsics");
     extrinsics_table.printstd();
 
-    fetch_events(
-        rpc,
-        block_number,
-        &block_hash,
-        &historic_types,
-        &metadata,
-        &runtime_version,
-    )
-    .await?;
+    fetch_events(rpc, block_number, &block_hash, &metadata, &runtime_version).await?;
 
     Ok(())
 }
@@ -176,7 +150,6 @@ async fn fetch_block(rpc: &NodeRPC, block_number: u64) -> Result<(), Error> {
 async fn fetch_timestamp(
     rpc: &NodeRPC,
     block_hash: &BlockHashHex,
-    historic_types: &ChainTypeRegistry,
     metadata: &RuntimeMetadata,
     runtime_version: &RuntimeVersion,
 ) -> Result<DateTime<Utc>, Error> {
@@ -188,7 +161,6 @@ async fn fetch_timestamp(
         pallet_name,
         storage_entry_name,
         timestamp_keys,
-        historic_types,
         metadata,
         runtime_version.spec_version,
     )?;
@@ -204,7 +176,6 @@ async fn fetch_timestamp(
         storage_bytes,
         pallet_name,
         storage_entry_name,
-        historic_types,
         metadata,
         runtime_version.spec_version,
     )?;
@@ -222,7 +193,6 @@ async fn fetch_events(
     rpc: &NodeRPC,
     block_number: u64,
     block_hash: &BlockHashHex,
-    historic_types: &ChainTypeRegistry,
     metadata: &RuntimeMetadata,
     runtime_version: &RuntimeVersion,
 ) -> Result<(), Error> {
@@ -235,25 +205,27 @@ async fn fetch_events(
         .state_get_storage(&system_events_key_hex, block_hash)
         .await?
     {
-        decode_events_any(
-            events_bytes,
-            historic_types,
-            metadata,
-            runtime_version.spec_version,
-        )?
-        .iter()
-        .enumerate()
-        .for_each(|(i, event)| {
-            let event_id = format!("{block_number}-{i}");
-            let ext_id = match event.phase {
-                Phase::ApplyExtrinsic(ext_idx) => Some(format!("{block_number}-{ext_idx}")),
-                _ => None,
-            }
-            .unwrap_or(String::from("-"));
-            let action = format!("{} ({})", event.event.name, event.event.action);
-            events_table.add_row(row![event_id, ext_id, action, "type"]);
-            debug!(?event);
-        });
+        decode_events_any(events_bytes, metadata, runtime_version.spec_version)?
+            .iter()
+            .enumerate()
+            .for_each(|(i, event)| {
+                let event_id = format!("{block_number}-{i}");
+                let (ty, ext_id) = match event.phase {
+                    Phase::ApplyExtrinsic(ext_idx) => {
+                        ("Extrinsic", Some(format!("{block_number}-{ext_idx}")))
+                    }
+                    Phase::Initialization => ("Initialization", None),
+                    Phase::Finalization => ("Finalization", None),
+                };
+                let action = format!("{} ({})", event.event.name, event.event.action);
+                events_table.add_row(row![
+                    event_id,
+                    ext_id.unwrap_or(String::from("-")),
+                    action,
+                    ty
+                ]);
+                debug!(?event);
+            });
     }
 
     println!("Events");

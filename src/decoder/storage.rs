@@ -3,7 +3,7 @@ use frame_decode::{
     storage::{IntoStorageKeys, decode_storage_value, encode_storage_key},
 };
 use frame_metadata::RuntimeMetadata;
-use scale_info_legacy::{ChainTypeRegistry, LookupName};
+use scale_info_legacy::LookupName;
 use scale_value::{Value, scale::ValueVisitor};
 use thiserror::Error;
 
@@ -54,10 +54,10 @@ pub fn encode_storage_key_any(
     pallet_name: &str,
     storage_entry_name: &str,
     keys: impl IntoStorageKeys,
-    historic_types: &ChainTypeRegistry,
     metadata: &RuntimeMetadata,
     spec_version: u64,
 ) -> Result<StorageKey, StorageKeyEncoderError> {
+    let historic_types = frame_decode::legacy_types::polkadot::relay_chain();
     // `ToTypeRegistry` is not exposed by `frame-decode` so we have to match on metadata use
     match metadata {
         RuntimeMetadata::V8(metadata) => {
@@ -170,10 +170,10 @@ pub fn decode_storage_value_any(
     value: impl AsRef<[u8]>,
     pallet_name: &str,
     storage_entry_name: &str,
-    historic_types: &ChainTypeRegistry,
     metadata: &RuntimeMetadata,
     spec_version: u64,
 ) -> Result<AnyStorageValue, StorageValueDecoderError> {
+    let historic_types = frame_decode::legacy_types::polkadot::relay_chain();
     let value = &mut value.as_ref();
 
     match metadata {
