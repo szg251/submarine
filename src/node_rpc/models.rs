@@ -13,8 +13,8 @@ pub struct BlockHashHex(pub String);
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Display)]
 pub struct BlockNumberHex(pub String);
 
-impl From<u64> for BlockNumberHex {
-    fn from(value: u64) -> Self {
+impl From<u32> for BlockNumberHex {
+    fn from(value: u32) -> Self {
         Self(format!("0x{value:x}"))
     }
 }

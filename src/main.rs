@@ -1,6 +1,8 @@
+use std::collections::HashSet;
+
 use chrono::{DateTime, Utc};
 use clap::Parser;
-use frame_metadata::{RuntimeMetadata, RuntimeMetadataPrefixed};
+use frame_metadata::{RuntimeMetadata, RuntimeMetadataPrefixed, decode_different::DecodeDifferent};
 use parity_scale_codec::Decode;
 use prettytable::{Table, row, table};
 use tracing::{Instrument, Level, debug, info, span, warn};
@@ -9,7 +11,9 @@ use crate::{
     decoder::{
         events::{Phase, SYSTEM_EVENTS_KEY, decode_events_any},
         extrinsic::decode_extrinsic_any,
+        pallets::ethereum,
         storage::{AnyStorageValue, decode_storage_value_any, encode_storage_key_any},
+        value_parser::parse_timestamp,
     },
     error::Error,
     node_rpc::{
@@ -33,7 +37,7 @@ struct Args {
     debug: bool,
 
     #[arg(long, short, default_value = "10000")]
-    block_number: u64,
+    block_number: u32,
 
     #[arg(long, short, default_value = "ws://37.27.51.25:9944")]
     node_rpc_url: String,
@@ -83,7 +87,7 @@ async fn main() -> Result<(), Error> {
     Ok(())
 }
 
-async fn fetch_block(rpc: &NodeRPC, block_number: u64) -> Result<(), Error> {
+async fn fetch_block(rpc: &NodeRPC, block_number: u32) -> Result<(), Error> {
     let queried_block_number = BlockNumberHex::from(block_number);
     let block_hash = rpc.chain_get_block_hash(&queried_block_number).await?;
 
@@ -94,6 +98,10 @@ async fn fetch_block(rpc: &NodeRPC, block_number: u64) -> Result<(), Error> {
             .map_err(Error::ParsingRuntimeMetadataFailed)?;
 
     debug!(?metadata);
+
+    let pallets = get_pallets(&metadata)?;
+
+    info!(?pallets);
 
     let mut signed_block = rpc.chain_get_block(&block_hash).await?;
     debug!(?signed_block);
@@ -144,6 +152,31 @@ async fn fetch_block(rpc: &NodeRPC, block_number: u64) -> Result<(), Error> {
 
     fetch_events(rpc, block_number, &block_hash, &metadata, &runtime_version).await?;
 
+    if pallets.contains("Ethereum") {
+        let ethereum_block =
+            ethereum::fetch_block(rpc, &block_hash, &metadata, &runtime_version).await?;
+        debug!(?ethereum_block);
+
+        let ethereum_block_hash =
+            ethereum::fetch_block_hash(rpc, block_number, &block_hash, &metadata, &runtime_version)
+                .await?;
+
+        let mut block_table = table![
+            ["Status"],
+            ["Hash", format!("0x{}", hex::encode(ethereum_block_hash))],
+            [
+                "Parent Hash",
+                format!("0x{}", hex::encode(ethereum_block.header.parent_hash))
+            ],
+            ["State Root",],
+            ["Mined By"]
+        ];
+
+        block_table.set_format(*prettytable::format::consts::FORMAT_NO_LINESEP_WITH_TITLE);
+        println!("Ethereum Block");
+        block_table.printstd();
+    }
+
     Ok(())
 }
 
@@ -180,18 +213,15 @@ async fn fetch_timestamp(
         runtime_version.spec_version,
     )?;
 
-    let timestamp = match value {
-        AnyStorageValue::Legacy(value) => value.as_u128(),
-        AnyStorageValue::Modern(value) => value.as_u128(),
-    }
-    .ok_or(Error::TimestampValueUnexpectedType)?;
-
-    DateTime::from_timestamp_millis(timestamp as i64).ok_or(Error::TimestampValueInvalid)
+    Ok(match value {
+        AnyStorageValue::Legacy(value) => parse_timestamp(*value)?,
+        AnyStorageValue::Modern(value) => parse_timestamp(value)?,
+    })
 }
 
 async fn fetch_events(
     rpc: &NodeRPC,
-    block_number: u64,
+    block_number: u32,
     block_hash: &BlockHashHex,
     metadata: &RuntimeMetadata,
     runtime_version: &RuntimeVersion,
@@ -232,4 +262,58 @@ async fn fetch_events(
     events_table.printstd();
 
     Ok(())
+}
+
+fn get_pallets(metadata: &RuntimeMetadata) -> Result<HashSet<String>, Error> {
+    match metadata {
+        RuntimeMetadata::V8(metadata) => match_decode_different(&metadata.modules)?
+            .iter()
+            .map(|module| match_decode_different(&module.name).cloned())
+            .collect(),
+        RuntimeMetadata::V9(metadata) => match_decode_different(&metadata.modules)?
+            .iter()
+            .map(|module| match_decode_different(&module.name).cloned())
+            .collect(),
+        RuntimeMetadata::V10(metadata) => match_decode_different(&metadata.modules)?
+            .iter()
+            .map(|module| match_decode_different(&module.name).cloned())
+            .collect(),
+        RuntimeMetadata::V11(metadata) => match_decode_different(&metadata.modules)?
+            .iter()
+            .map(|module| match_decode_different(&module.name).cloned())
+            .collect(),
+        RuntimeMetadata::V12(metadata) => match_decode_different(&metadata.modules)?
+            .iter()
+            .map(|module| match_decode_different(&module.name).cloned())
+            .collect(),
+        RuntimeMetadata::V13(metadata) => match_decode_different(&metadata.modules)?
+            .iter()
+            .map(|module| match_decode_different(&module.name).cloned())
+            .collect(),
+        RuntimeMetadata::V14(metadata) => Ok(metadata
+            .pallets
+            .iter()
+            .map(|pallet| pallet.name.clone())
+            .collect()),
+        RuntimeMetadata::V15(metadata) => Ok(metadata
+            .pallets
+            .iter()
+            .map(|pallet| pallet.name.clone())
+            .collect()),
+        RuntimeMetadata::V16(metadata) => Ok(metadata
+            .pallets
+            .iter()
+            .map(|pallet| pallet.name.clone())
+            .collect()),
+        _ => Err(Error::UnsupportedMetadataVersion {
+            version: metadata.version(),
+        }),
+    }
+}
+
+fn match_decode_different<B, O>(decode_different: &DecodeDifferent<B, O>) -> Result<&O, Error> {
+    match decode_different {
+        DecodeDifferent::Encode(_) => Err(Error::DecodedDataUnavailable),
+        DecodeDifferent::Decoded(decoded) => Ok(decoded),
+    }
 }

@@ -3,9 +3,9 @@ use tracing::subscriber::SetGlobalDefaultError;
 
 use crate::{
     decoder::{
-        events::EventDecoderError,
         extrinsic::ExtrinsicDecoderError,
         storage::{StorageKeyEncoderError, StorageValueDecoderError},
+        value_parser::ValueDecoderError,
     },
     node_rpc::client::NodeRPCError,
 };
@@ -31,15 +31,15 @@ pub enum Error {
     #[error("Storage value not found for key {0}")]
     StorageValueNotFound(String),
 
-    #[error("Timestamp storage value has an unexpected type")]
-    TimestampValueUnexpectedType,
-
-    #[error("Timestamp storage value has an invalid value")]
-    TimestampValueInvalid,
-
     #[error(transparent)]
-    EventDecoderError(#[from] EventDecoderError),
+    ValueDecoderError(#[from] ValueDecoderError),
 
     #[error("Failed to parse RuntimeMetadata: {0}")]
     ParsingRuntimeMetadataFailed(parity_scale_codec::Error),
+
+    #[error("This metadata version is unsupported: {version}")]
+    UnsupportedMetadataVersion { version: u32 },
+
+    #[error("Decoded data unavailable in type DecodeDifferent")]
+    DecodedDataUnavailable,
 }
