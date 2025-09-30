@@ -40,12 +40,6 @@ pub enum Error {
     #[error(transparent)]
     EventDecoderError(#[from] EventDecoderError),
 
-    #[error("Failed to read metadata file: {0}")]
-    ReadingMetadataFileFailed(std::io::Error),
-
-    #[error("Failed to parse metadata file: {0}")]
-    ParsingMetadataFileFailed(serde_yaml::Error),
-
     #[error("Failed to parse RuntimeMetadata: {0}")]
     ParsingRuntimeMetadataFailed(parity_scale_codec::Error),
 }

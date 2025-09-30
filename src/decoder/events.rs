@@ -3,7 +3,6 @@ use std::collections::HashMap;
 use frame_metadata::RuntimeMetadata;
 use scale_value::{Composite, Primitive, Value, ValueDef, Variant};
 use thiserror::Error;
-use tracing::debug;
 
 use crate::decoder::storage::{
     AnyStorageValue, StorageValueDecoderError, decode_storage_value_any,
@@ -74,22 +73,22 @@ impl<T> WithErrorSpan for Result<T, EventDecoderError> {
         self.map_err(|mut err| {
             match &mut err {
                 EventDecoderError::UnexpectedValueType { span, .. } => {
-                    *span = append_span(&span, outer_span);
+                    *span = append_span(span, outer_span);
                 }
                 EventDecoderError::UnexpectedVariantName { span, .. } => {
-                    *span = append_span(&span, outer_span);
+                    *span = append_span(span, outer_span);
                 }
                 EventDecoderError::RecordFieldNotFound { span, .. } => {
-                    *span = append_span(&span, outer_span);
+                    *span = append_span(span, outer_span);
                 }
                 EventDecoderError::StorageValueDecodingFailed { span, .. } => {
-                    *span = append_span(&span, outer_span);
+                    *span = append_span(span, outer_span);
                 }
                 EventDecoderError::ValueDeserializerError { span, .. } => {
-                    *span = append_span(&span, outer_span);
+                    *span = append_span(span, outer_span);
                 }
                 EventDecoderError::UnexpectedVectorLength { span, .. } => {
-                    *span = append_span(&span, outer_span);
+                    *span = append_span(span, outer_span);
                 }
             };
             err
@@ -301,6 +300,7 @@ where
     }
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub enum Phase {
     ApplyExtrinsic(u32),
@@ -308,6 +308,7 @@ pub enum Phase {
     Initialization,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub struct EventRecord {
     pub phase: Phase,
@@ -315,6 +316,7 @@ pub struct EventRecord {
     pub topics: Vec<String>,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub struct Event {
     pub name: String,
