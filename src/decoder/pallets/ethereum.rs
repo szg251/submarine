@@ -1,9 +1,12 @@
+/// Compatible with pallet-ethereum
 use chrono::{DateTime, Utc};
-use frame_metadata::RuntimeMetadata;
+use frame_metadata::{RuntimeMetadata, decode_different::DecodeDifferent};
 use scale_value::Value;
+use tracing::debug;
 
 use crate::{
     decoder::{
+        pallets::utils::{PalletMetadataError, UnresolvableTypeError},
         storage::{AnyStorageValue, decode_storage_value_any, encode_storage_key_any},
         value_parser::{
             ValueDecoderError, WithErrorSpan, parse_bytestring, parse_record, parse_timestamp,
@@ -18,6 +21,154 @@ use crate::{
 };
 
 const PALLET_NAME: &str = "Ethereum";
+
+pub fn verify_pallet_metadata(metadata: &RuntimeMetadata) -> Result<bool, PalletMetadataError> {
+    match metadata {
+        // RuntimeMetadata::V8(metadata) => {
+        //     let pallet_metadata = try_find(match_decode_different(&metadata.modules)?, |module| {
+        //         Ok(match_decode_different(&module.name)? == PALLET_NAME)
+        //     })?
+        //     .ok_or(PalletMetadataError::MetadataNotFound(
+        //         PALLET_NAME.to_string(),
+        //     ))?;
+
+        //     let storage = pallet_metadata
+        //         .storage
+        //         .as_ref()
+        //         .ok_or(PalletMetadataError::MetadataNotFound("storage".to_string()))?;
+        //     let storage = match_decode_different(&storage)?;
+        //     let entries = match_decode_different(&storage.entries)?;
+
+        //     let entry_metadata = try_find(entries, |entry| {
+        //         Ok(match_decode_different(&entry.name)? == "CurrentBlock")
+        //     })?
+        //     .ok_or(PalletMetadataError::MetadataNotFound(
+        //         "CurrentBlock".to_string(),
+        //     ))?;
+
+        //     debug!(?entry_metadata.ty);
+
+        //     Ok(true)
+        // }
+        // RuntimeMetadata::V9(metadata) => match_decode_different(&metadata.modules)?
+        // .iter()
+        // .map(|module| match_decode_different(&module.name).cloned())
+        // .collect(),
+        // RuntimeMetadata::V10(metadata) => match_decode_different(&metadata.modules)?
+        // .iter()
+        // .map(|module| match_decode_different(&module.name).cloned())
+        // .collect(),
+        // RuntimeMetadata::V11(metadata) => match_decode_different(&metadata.modules)?
+        // .iter()
+        // .map(|module| match_decode_different(&module.name).cloned())
+        // .collect(),
+        // RuntimeMetadata::V12(metadata) => match_decode_different(&metadata.modules)?
+        // .iter()
+        // .map(|module| match_decode_different(&module.name).cloned())
+        // .collect(),
+        // RuntimeMetadata::V13(metadata) => match_decode_different(&metadata.modules)?
+        // .iter()
+        // .map(|module| match_decode_different(&module.name).cloned())
+        // .collect(),
+        RuntimeMetadata::V14(metadata) => {
+            let pallet_metadata = metadata
+                .pallets
+                .iter()
+                .find(|pallet| pallet.name == PALLET_NAME)
+                .ok_or(PalletMetadataError::MetadataNotFound(
+                    PALLET_NAME.to_string(),
+                ))?;
+
+            let storage = pallet_metadata
+                .storage
+                .as_ref()
+                .ok_or(PalletMetadataError::MetadataNotFound("storage".to_string()))?;
+
+            let entry_metadata = storage
+                .entries
+                .iter()
+                .find(|entry| entry.name == "CurrentBlock")
+                .ok_or(PalletMetadataError::MetadataNotFound(
+                    "CurrentBlock".to_string(),
+                ))?;
+
+            let ty = match entry_metadata.ty {
+                frame_metadata::v14::StorageEntryType::Plain(type_id) => Ok(type_id),
+                ref other => Err(UnresolvableTypeError::UnexpectedTypeVariant {
+                    expected: "StorageEntryType::Plain".to_string(),
+                    got: format!("{other:?}"),
+                }),
+            }?;
+
+            let ty = metadata
+                .types
+                .resolve(ty.id)
+                .ok_or(UnresolvableTypeError::TypeIdNotFound(ty.id))?;
+
+            let param_id = ty
+                .type_params
+                .first()
+                .ok_or(UnresolvableTypeError::TypeParamExpected {
+                    expected: 1,
+                    got: 0,
+                })?
+                .ty
+                .ok_or(UnresolvableTypeError::TypeParamExpected {
+                    expected: 1,
+                    got: 0,
+                })?
+                .id;
+
+            let param_ty = metadata
+                .types
+                .resolve(param_id)
+                .ok_or(UnresolvableTypeError::TypeIdNotFound(param_id))?;
+
+            let segments_ok = ty.path.segments == vec!["ethereum", "block", "Block"]
+                && param_ty.path.segments == vec!["ethereum", "transaction", "LegacyTransaction"];
+
+            Ok(segments_ok)
+        }
+        // RuntimeMetadata::V15(metadata) => Ok(metadata
+        // .pallets
+        // .iter()
+        // .map(|pallet| pallet.name.clone())
+        // .collect()),
+        // RuntimeMetadata::V16(metadata) => Ok(metadata
+        // .pallets
+        // .iter()
+        // .map(|pallet| pallet.name.clone())
+        // .collect()),
+        _ => Err(PalletMetadataError::UnsupportedMetadataVersion {
+            version: metadata.version(),
+        }),
+    }
+}
+
+fn match_decode_different<B, O>(
+    decode_different: &DecodeDifferent<B, O>,
+) -> Result<&O, PalletMetadataError> {
+    match decode_different {
+        DecodeDifferent::Encode(_) => Err(PalletMetadataError::DecodedDataUnavailable),
+        DecodeDifferent::Decoded(decoded) => Ok(decoded),
+    }
+}
+
+fn try_find<'a, T, E>(
+    vec: &'a Vec<T>,
+    predicate: impl Fn(&T) -> Result<bool, E>,
+) -> Result<Option<&'a T>, E> {
+    let mut result = None;
+
+    for item in vec {
+        if predicate(item)? {
+            result = Some(item);
+            break;
+        }
+    }
+
+    Ok(result)
+}
 
 #[derive(Debug)]
 pub struct Block {

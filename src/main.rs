@@ -1,8 +1,6 @@
-use std::collections::HashSet;
-
 use chrono::{DateTime, Utc};
 use clap::Parser;
-use frame_metadata::{RuntimeMetadata, RuntimeMetadataPrefixed, decode_different::DecodeDifferent};
+use frame_metadata::{RuntimeMetadata, RuntimeMetadataPrefixed};
 use parity_scale_codec::Decode;
 use prettytable::{Table, row, table};
 use tracing::{Instrument, Level, debug, info, span, warn};
@@ -11,7 +9,10 @@ use crate::{
     decoder::{
         events::{Phase, SYSTEM_EVENTS_KEY, decode_events_any},
         extrinsic::decode_extrinsic_any,
-        pallets::ethereum,
+        pallets::{
+            ethereum::{self, verify_pallet_metadata},
+            utils::get_pallets,
+        },
         storage::{AnyStorageValue, decode_storage_value_any, encode_storage_key_any},
         value_parser::parse_timestamp,
     },
@@ -153,6 +154,7 @@ async fn fetch_block(rpc: &NodeRPC, block_number: u32) -> Result<(), Error> {
     fetch_events(rpc, block_number, &block_hash, &metadata, &runtime_version).await?;
 
     if pallets.contains("Ethereum") {
+        verify_pallet_metadata(&metadata)?;
         let ethereum_block =
             ethereum::fetch_block(rpc, &block_hash, &metadata, &runtime_version).await?;
         debug!(?ethereum_block);
@@ -262,58 +264,4 @@ async fn fetch_events(
     events_table.printstd();
 
     Ok(())
-}
-
-fn get_pallets(metadata: &RuntimeMetadata) -> Result<HashSet<String>, Error> {
-    match metadata {
-        RuntimeMetadata::V8(metadata) => match_decode_different(&metadata.modules)?
-            .iter()
-            .map(|module| match_decode_different(&module.name).cloned())
-            .collect(),
-        RuntimeMetadata::V9(metadata) => match_decode_different(&metadata.modules)?
-            .iter()
-            .map(|module| match_decode_different(&module.name).cloned())
-            .collect(),
-        RuntimeMetadata::V10(metadata) => match_decode_different(&metadata.modules)?
-            .iter()
-            .map(|module| match_decode_different(&module.name).cloned())
-            .collect(),
-        RuntimeMetadata::V11(metadata) => match_decode_different(&metadata.modules)?
-            .iter()
-            .map(|module| match_decode_different(&module.name).cloned())
-            .collect(),
-        RuntimeMetadata::V12(metadata) => match_decode_different(&metadata.modules)?
-            .iter()
-            .map(|module| match_decode_different(&module.name).cloned())
-            .collect(),
-        RuntimeMetadata::V13(metadata) => match_decode_different(&metadata.modules)?
-            .iter()
-            .map(|module| match_decode_different(&module.name).cloned())
-            .collect(),
-        RuntimeMetadata::V14(metadata) => Ok(metadata
-            .pallets
-            .iter()
-            .map(|pallet| pallet.name.clone())
-            .collect()),
-        RuntimeMetadata::V15(metadata) => Ok(metadata
-            .pallets
-            .iter()
-            .map(|pallet| pallet.name.clone())
-            .collect()),
-        RuntimeMetadata::V16(metadata) => Ok(metadata
-            .pallets
-            .iter()
-            .map(|pallet| pallet.name.clone())
-            .collect()),
-        _ => Err(Error::UnsupportedMetadataVersion {
-            version: metadata.version(),
-        }),
-    }
-}
-
-fn match_decode_different<B, O>(decode_different: &DecodeDifferent<B, O>) -> Result<&O, Error> {
-    match decode_different {
-        DecodeDifferent::Encode(_) => Err(Error::DecodedDataUnavailable),
-        DecodeDifferent::Decoded(decoded) => Ok(decoded),
-    }
 }

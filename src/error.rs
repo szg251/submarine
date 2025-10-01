@@ -4,6 +4,7 @@ use tracing::subscriber::SetGlobalDefaultError;
 use crate::{
     decoder::{
         extrinsic::ExtrinsicDecoderError,
+        pallets::utils::PalletMetadataError,
         storage::{StorageKeyEncoderError, StorageValueDecoderError},
         value_parser::ValueDecoderError,
     },
@@ -37,9 +38,6 @@ pub enum Error {
     #[error("Failed to parse RuntimeMetadata: {0}")]
     ParsingRuntimeMetadataFailed(parity_scale_codec::Error),
 
-    #[error("This metadata version is unsupported: {version}")]
-    UnsupportedMetadataVersion { version: u32 },
-
-    #[error("Decoded data unavailable in type DecodeDifferent")]
-    DecodedDataUnavailable,
+    #[error(transparent)]
+    PalletMetadataError(#[from] PalletMetadataError),
 }
