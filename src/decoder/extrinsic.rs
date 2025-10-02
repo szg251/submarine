@@ -6,6 +6,8 @@ use frame_metadata::RuntimeMetadata;
 use scale_info_legacy::LookupName;
 use thiserror::Error;
 
+use crate::decoder::metadata::AnyRuntimeMetadata;
+
 #[derive(Debug)]
 pub enum AnyExtrinsic<'info> {
     Legacy(Box<Extrinsic<'info, LookupName>>),
@@ -50,13 +52,13 @@ pub enum ExtrinsicDecoderError {
 /// Decodes any version of extrinsic
 pub fn decode_extrinsic_any<'info>(
     ext: impl AsRef<[u8]>,
-    metadata: &'info RuntimeMetadata,
+    metadata: AnyRuntimeMetadata<'info>,
     spec_version: u64,
 ) -> Result<AnyExtrinsic<'info>, ExtrinsicDecoderError> {
     let historic_types = frame_decode::legacy_types::polkadot::relay_chain();
     let ext = &mut ext.as_ref();
 
-    match metadata {
+    match metadata.0 {
         RuntimeMetadata::V8(metadata) => {
             let mut historic_types_for_spec = historic_types.for_spec_version(spec_version);
             let types_from_metadata = type_registry_from_metadata(metadata)?;

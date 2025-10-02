@@ -7,6 +7,8 @@ use scale_info_legacy::LookupName;
 use scale_value::{Value, scale::ValueVisitor};
 use thiserror::Error;
 
+use crate::decoder::metadata::AnyRuntimeMetadata;
+
 #[derive(Debug)]
 pub struct StorageKey(pub Vec<u8>);
 
@@ -54,12 +56,12 @@ pub fn encode_storage_key_any(
     pallet_name: &str,
     storage_entry_name: &str,
     keys: impl IntoStorageKeys,
-    metadata: &RuntimeMetadata,
+    metadata: AnyRuntimeMetadata<'_>,
     spec_version: u64,
 ) -> Result<StorageKey, StorageKeyEncoderError> {
     let historic_types = frame_decode::legacy_types::polkadot::relay_chain();
     // `ToTypeRegistry` is not exposed by `frame-decode` so we have to match on metadata use
-    match metadata {
+    match metadata.0 {
         RuntimeMetadata::V8(metadata) => {
             let mut historic_types_for_spec = historic_types.for_spec_version(spec_version);
             let types_from_metadata = type_registry_from_metadata(metadata)?;
@@ -170,13 +172,13 @@ pub fn decode_storage_value_any(
     value: impl AsRef<[u8]>,
     pallet_name: &str,
     storage_entry_name: &str,
-    metadata: &RuntimeMetadata,
+    metadata: AnyRuntimeMetadata<'_>,
     spec_version: u64,
 ) -> Result<AnyStorageValue, StorageValueDecoderError> {
     let historic_types = frame_decode::legacy_types::polkadot::relay_chain();
     let value = &mut value.as_ref();
 
-    match metadata {
+    match metadata.0 {
         RuntimeMetadata::V8(metadata) => {
             let mut historic_types_for_spec = historic_types.for_spec_version(spec_version);
             let types_from_metadata = type_registry_from_metadata(metadata)?;

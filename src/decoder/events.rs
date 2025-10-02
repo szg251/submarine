@@ -1,7 +1,7 @@
-use frame_metadata::RuntimeMetadata;
 use scale_value::{Composite, Primitive, Value, ValueDef, Variant};
 
 use crate::decoder::{
+    metadata::AnyRuntimeMetadata,
     storage::{AnyStorageValue, decode_storage_value_any},
     value_parser::{ValueDecoderError, WithErrorSpan, parse_record, parse_vec},
 };
@@ -12,7 +12,7 @@ pub const SYSTEM_EVENTS_KEY: &str =
 /// Decodes any version of System.Events storage value
 pub fn decode_events_any(
     events_bytes: impl AsRef<[u8]>,
-    metadata: &RuntimeMetadata,
+    metadata: AnyRuntimeMetadata<'_>,
     spec_version: u64,
 ) -> Result<Vec<EventRecord>, ValueDecoderError> {
     let raw_value =

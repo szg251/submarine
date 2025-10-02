@@ -4,7 +4,7 @@ use tracing::subscriber::SetGlobalDefaultError;
 use crate::{
     decoder::{
         extrinsic::ExtrinsicDecoderError,
-        pallets::utils::PalletMetadataError,
+        metadata::MetadataError,
         storage::{StorageKeyEncoderError, StorageValueDecoderError},
         value_parser::ValueDecoderError,
     },
@@ -39,5 +39,5 @@ pub enum Error {
     ParsingRuntimeMetadataFailed(parity_scale_codec::Error),
 
     #[error(transparent)]
-    PalletMetadataError(#[from] PalletMetadataError),
+    MetadataError(#[from] MetadataError),
 }

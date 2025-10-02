@@ -1,6 +1,6 @@
 use chrono::{DateTime, Utc};
 use clap::Parser;
-use frame_metadata::{RuntimeMetadata, RuntimeMetadataPrefixed};
+use frame_metadata::RuntimeMetadataPrefixed;
 use parity_scale_codec::Decode;
 use prettytable::{Table, row, table};
 use tracing::{Instrument, Level, debug, info, span, warn};
@@ -9,10 +9,8 @@ use crate::{
     decoder::{
         events::{Phase, SYSTEM_EVENTS_KEY, decode_events_any},
         extrinsic::decode_extrinsic_any,
-        pallets::{
-            ethereum::{self, verify_pallet_metadata},
-            utils::get_pallets,
-        },
+        metadata::AnyRuntimeMetadata,
+        pallets::ethereum,
         storage::{AnyStorageValue, decode_storage_value_any, encode_storage_key_any},
         value_parser::parse_timestamp,
     },
@@ -100,7 +98,8 @@ async fn fetch_block(rpc: &NodeRPC, block_number: u32) -> Result<(), Error> {
 
     debug!(?metadata);
 
-    let pallets = get_pallets(&metadata)?;
+    let metadata = AnyRuntimeMetadata(&metadata);
+    let pallets = metadata.pallet_names()?;
 
     info!(?pallets);
 
@@ -109,7 +108,7 @@ async fn fetch_block(rpc: &NodeRPC, block_number: u32) -> Result<(), Error> {
 
     let runtime_version = rpc.state_get_runtime_version(&block_hash).await?;
 
-    let timestamp = fetch_timestamp(rpc, &block_hash, &metadata, &runtime_version).await?;
+    let timestamp = fetch_timestamp(rpc, &block_hash, metadata, &runtime_version).await?;
 
     let mut block_table = table![
         ["Timestamp", timestamp],
@@ -137,7 +136,7 @@ async fn fetch_block(rpc: &NodeRPC, block_number: u32) -> Result<(), Error> {
         .iter_mut()
         .enumerate()
         .for_each(|(i, ExtrinsicBytes(ext))| {
-            match decode_extrinsic_any(ext, &metadata, runtime_version.spec_version) {
+            match decode_extrinsic_any(ext, metadata, runtime_version.spec_version) {
                 Ok(extrinsic) => {
                     let extrinsic_id = format!("{block_number}-{i}");
                     let action = format!("{} ({})", extrinsic.pallet_name(), extrinsic.call_name());
@@ -151,16 +150,18 @@ async fn fetch_block(rpc: &NodeRPC, block_number: u32) -> Result<(), Error> {
     println!("Extrinsics");
     extrinsics_table.printstd();
 
-    fetch_events(rpc, block_number, &block_hash, &metadata, &runtime_version).await?;
+    fetch_events(rpc, block_number, &block_hash, metadata, &runtime_version).await?;
 
     if pallets.contains("Ethereum") {
-        verify_pallet_metadata(&metadata)?;
-        let ethereum_block =
-            ethereum::fetch_block(rpc, &block_hash, &metadata, &runtime_version).await?;
+        ethereum::verify_pallet_metadata(metadata)?;
+
+        let ethereum_block = ethereum::fetch_block(rpc, &block_hash, metadata, &runtime_version)
+            .instrument(span!(Level::INFO, "Fetch Ethereum block", ?block_hash))
+            .await?;
         debug!(?ethereum_block);
 
         let ethereum_block_hash =
-            ethereum::fetch_block_hash(rpc, block_number, &block_hash, &metadata, &runtime_version)
+            ethereum::fetch_block_hash(rpc, block_number, &block_hash, metadata, &runtime_version)
                 .await?;
 
         let mut block_table = table![
@@ -185,7 +186,7 @@ async fn fetch_block(rpc: &NodeRPC, block_number: u32) -> Result<(), Error> {
 async fn fetch_timestamp(
     rpc: &NodeRPC,
     block_hash: &BlockHashHex,
-    metadata: &RuntimeMetadata,
+    metadata: AnyRuntimeMetadata<'_>,
     runtime_version: &RuntimeVersion,
 ) -> Result<DateTime<Utc>, Error> {
     let pallet_name = "Timestamp";
@@ -225,7 +226,7 @@ async fn fetch_events(
     rpc: &NodeRPC,
     block_number: u32,
     block_hash: &BlockHashHex,
-    metadata: &RuntimeMetadata,
+    metadata: AnyRuntimeMetadata<'_>,
     runtime_version: &RuntimeVersion,
 ) -> Result<(), Error> {
     let system_events_key_hex = StorageKeyHex(SYSTEM_EVENTS_KEY.to_string());
