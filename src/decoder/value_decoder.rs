@@ -6,6 +6,13 @@ use thiserror::Error;
 
 use crate::decoder::storage::StorageValueDecoderError;
 
+pub trait ValueDecoder<T> {
+    fn decode(value: Value<T>) -> Result<Self, ValueDecoderError>
+    where
+        Self: Sized,
+        T: std::fmt::Debug;
+}
+
 #[derive(Debug, Error)]
 pub enum ValueDecoderError {
     #[error("Value type {expected}, but got {got} at {span}")]
@@ -105,89 +112,99 @@ fn append_span(inner_span: &str, outer_span: &str) -> String {
     }
 }
 
-pub fn decode_as_vec<T>(value: Value<T>) -> Result<Vec<Value<T>>, ValueDecoderError>
-where
-    T: std::fmt::Debug,
-{
-    match value.value {
-        ValueDef::Composite(Composite::Unnamed(vec)) => Ok(vec),
-        other => Err(ValueDecoderError::UnexpectedValueType {
-            expected: "ValueDef::Composite(Composite::Unnamed(_))".to_string(),
-            got: format!("{other:?}"),
-            span: String::new(),
-        }),
+/// Parse a `ValueDef::Composite(Composite::Named(_))` to a `HashMap`
+impl<T> ValueDecoder<T> for Vec<Value<T>> {
+    fn decode(value: Value<T>) -> Result<Self, ValueDecoderError>
+    where
+        T: std::fmt::Debug,
+    {
+        match value.value {
+            ValueDef::Composite(Composite::Unnamed(vec)) => Ok(vec),
+            other => Err(ValueDecoderError::UnexpectedValueType {
+                expected: "ValueDef::Composite(Composite::Unnamed(_))".to_string(),
+                got: format!("{other:?}"),
+                span: String::new(),
+            }),
+        }
     }
 }
 
-/// Parse a `ValueDef::Composite(Composite::Named(_))` to a `HashMap`
-pub fn decode_as_record<T>(value: Value<T>) -> Result<HashMap<String, Value<T>>, ValueDecoderError>
-where
-    T: std::fmt::Debug,
-{
-    match value.value {
-        ValueDef::Composite(Composite::Named(named)) => {
-            Ok(named.into_iter().collect::<HashMap<_, _>>())
+impl<T> ValueDecoder<T> for HashMap<String, Value<T>> {
+    fn decode(value: Value<T>) -> Result<HashMap<String, Value<T>>, ValueDecoderError>
+    where
+        T: std::fmt::Debug,
+    {
+        match value.value {
+            ValueDef::Composite(Composite::Named(named)) => {
+                Ok(named.into_iter().collect::<HashMap<_, _>>())
+            }
+            other => Err(ValueDecoderError::UnexpectedValueType {
+                expected: "ValueDef::Composite(Composite::Named(_))".to_string(),
+                got: format!("{other:?}"),
+                span: String::new(),
+            }),
         }
-        other => Err(ValueDecoderError::UnexpectedValueType {
-            expected: "ValueDef::Composite(Composite::Named(_))".to_string(),
-            got: format!("{other:?}"),
-            span: String::new(),
-        }),
     }
 }
 
 /// Parse a `ValueDef::Composite(Composite::Unnamed(_))` to a `Vec<u8>`
-pub fn decode_as_bytestring<T>(value: Value<T>) -> Result<Vec<u8>, ValueDecoderError>
-where
-    T: std::fmt::Debug,
-{
-    match value.value {
-        ValueDef::Composite(Composite::Unnamed(mut vec)) => {
-            let fst = vec.pop().ok_or(ValueDecoderError::UnexpectedVectorLength {
-                expected: 1,
-                got: vec.len(),
-                span: String::new(),
-            })?;
-            match fst.value {
-                ValueDef::Composite(Composite::Unnamed(vec)) => vec
-                    .into_iter()
-                    .map(|value| match value.value {
-                        ValueDef::Primitive(Primitive::U128(uint)) => Ok(uint as u8),
-                        other => Err(ValueDecoderError::UnexpectedValueType {
-                            expected: "ValueDef::Primitive(Primitive::U128(_))".to_string(),
-                            got: format!("{other:?}"),
-                            span: String::new(),
-                        }),
-                    })
-                    .collect(),
-                other => Err(ValueDecoderError::UnexpectedValueType {
-                    expected: "ValueDef::Composite(Composite::Unnamed(_))".to_string(),
-                    got: format!("{other:?}"),
+impl<T> ValueDecoder<T> for Vec<u8> {
+    fn decode(value: Value<T>) -> Result<Vec<u8>, ValueDecoderError>
+    where
+        T: std::fmt::Debug,
+    {
+        match value.value {
+            ValueDef::Composite(Composite::Unnamed(mut vec)) => {
+                let fst = vec.pop().ok_or(ValueDecoderError::UnexpectedVectorLength {
+                    expected: 1,
+                    got: vec.len(),
                     span: String::new(),
-                }),
+                })?;
+                match fst.value {
+                    ValueDef::Composite(Composite::Unnamed(vec)) => vec
+                        .into_iter()
+                        .map(|value| match value.value {
+                            ValueDef::Primitive(Primitive::U128(uint)) => Ok(uint as u8),
+                            other => Err(ValueDecoderError::UnexpectedValueType {
+                                expected: "ValueDef::Primitive(Primitive::U128(_))".to_string(),
+                                got: format!("{other:?}"),
+                                span: String::new(),
+                            }),
+                        })
+                        .collect(),
+                    other => Err(ValueDecoderError::UnexpectedValueType {
+                        expected: "ValueDef::Composite(Composite::Unnamed(_))".to_string(),
+                        got: format!("{other:?}"),
+                        span: String::new(),
+                    }),
+                }
             }
+            other => Err(ValueDecoderError::UnexpectedValueType {
+                expected: "ValueDef::Composite(Composite::Unnamed(_))".to_string(),
+                got: format!("{other:?}"),
+                span: String::new(),
+            }),
         }
-        other => Err(ValueDecoderError::UnexpectedValueType {
-            expected: "ValueDef::Composite(Composite::Unnamed(_))".to_string(),
-            got: format!("{other:?}"),
-            span: String::new(),
-        }),
     }
 }
 
-pub fn decode_as_timestamp<T>(value: Value<T>) -> Result<DateTime<Utc>, ValueDecoderError>
-where
-    T: std::fmt::Debug,
-{
-    match value.value {
-        ValueDef::Primitive(Primitive::U128(uint)) => DateTime::from_timestamp_millis(uint as i64)
+impl<T> ValueDecoder<T> for DateTime<Utc> {
+    fn decode(value: Value<T>) -> Result<DateTime<Utc>, ValueDecoderError>
+    where
+        T: std::fmt::Debug,
+    {
+        match value.value {
+            ValueDef::Primitive(Primitive::U128(uint)) => DateTime::from_timestamp_millis(
+                uint as i64,
+            )
             .ok_or(ValueDecoderError::TimestampValueInvalid {
                 span: String::new(),
             }),
-        other => Err(ValueDecoderError::UnexpectedValueType {
-            expected: "ValueDef::Primitive(Primitive::U128(_))".to_string(),
-            got: format!("{other:?}"),
-            span: String::new(),
-        }),
+            other => Err(ValueDecoderError::UnexpectedValueType {
+                expected: "ValueDef::Primitive(Primitive::U128(_))".to_string(),
+                got: format!("{other:?}"),
+                span: String::new(),
+            }),
+        }
     }
 }

@@ -2,14 +2,14 @@ use crate::{
     decoder::{
         metadata::AnyRuntimeMetadata,
         storage::{AnyStorageValue, decode_storage_value_any},
-        value_decoder::WithErrorSpan,
+        value_decoder::{ValueDecoder, WithErrorSpan},
     },
     error::Error,
     node_rpc::{
         client::NodeRPC,
         models::{BlockHashHex, RuntimeVersion, StorageKeyHex, StorageValueBytes},
     },
-    pallets::system::decoder::{EventRecord, decode_as_events},
+    pallets::system::decoder::EventRecord,
 };
 
 pub const PALLET_NAME: &str = "System";
@@ -29,18 +29,27 @@ pub async fn fetch_events(
     let StorageValueBytes(events_bytes) = rpc
         .state_get_storage(&system_events_key_hex, block_hash)
         .await?
-        .ok_or(Error::StorageValueNotFound(system_events_key_hex.0))?;
+        .ok_or(Error::StorageValueNotFound {
+            pallet_name: PALLET_NAME.to_string(),
+            storage_entry_name: "Events".to_string(),
+            storage_entry_keys: None,
+            storage_entry_key_hash: system_events_key_hex,
+        })?;
 
     let raw_value = decode_storage_value_any(
         events_bytes,
-        "System",
+        PALLET_NAME,
         "Events",
         metadata,
         runtime_version.spec_version,
     )?;
 
     Ok(match raw_value {
-        AnyStorageValue::Legacy(value) => decode_as_events(*value).add_error_span("events")?,
-        AnyStorageValue::Modern(value) => decode_as_events(value).add_error_span("events")?,
+        AnyStorageValue::Legacy(value) => {
+            <Vec<EventRecord>>::decode(*value).add_error_span("events")?
+        }
+        AnyStorageValue::Modern(value) => {
+            <Vec<EventRecord>>::decode(value).add_error_span("events")?
+        }
     })
 }

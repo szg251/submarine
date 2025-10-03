@@ -1,15 +1,14 @@
+use scale_decode::ext::primitive_types::U256;
+
 use crate::{
-    decoder::{
-        metadata::{AnyRuntimeMetadata, MetadataError},
-        storage::{AnyStorageValue, decode_storage_value_any, encode_storage_key_any},
-        value_decoder::decode_as_bytestring,
-    },
+    decoder::metadata::{AnyRuntimeMetadata, MetadataError},
     error::Error,
+    fetch::fetch,
     node_rpc::{
         client::NodeRPC,
-        models::{BlockHashHex, RuntimeVersion, StorageKeyHex, StorageValueBytes},
+        models::{BlockHashHex, RuntimeVersion},
     },
-    pallets::ethereum::decoder::{Block, decode_as_block},
+    pallets::ethereum::decoder::Block,
 };
 
 const PALLET_NAME: &str = "Ethereum";
@@ -19,31 +18,48 @@ pub fn verify_pallet_metadata(metadata: AnyRuntimeMetadata<'_>) -> Result<(), Me
 
     let storage_types = [
         (
+            "BlockHash",
+            vec!["primitive_types::U256"],
+            "primitive_types::H256",
+        ),
+        (
             "CurrentBlock",
+            vec![],
             "ethereum::block::Block<ethereum::transaction::LegacyTransaction>",
         ),
-        ("BlockHash", "primitive_types::H256"),
     ];
 
-    storage_types
-        .iter()
-        .try_for_each(|(storage_entry_name, expected_type)| {
-            let type_name = metadata
+    storage_types.iter().try_for_each(
+        |(storage_entry_name, expected_key_types, expected_value_type)| {
+            let (key_types, value_type) = metadata
                 .pallet_metadata(PALLET_NAME)?
                 .storage_entry(storage_entry_name)?
-                .type_as_str(type_registry)?;
+                .types_as_str(type_registry)?;
 
-            if &type_name[..] == *expected_type {
-                Ok(())
-            } else {
+            if &value_type[..] != *expected_value_type {
                 Err(MetadataError::UnexpectedStorageValueType {
-                    expected: expected_type.to_string(),
-                    got: type_name,
+                    expected: expected_value_type.to_string(),
+                    got: value_type,
                     pallet_name: PALLET_NAME.to_string(),
                     storage_entry_name: storage_entry_name.to_string(),
-                })
-            }
-        })
+                })?
+            };
+
+            key_types.iter().enumerate().try_for_each(|(i, key_type)| {
+                let expected_key_type = expected_key_types.get(i).copied();
+                if Some(&key_type[..]) != expected_key_type {
+                    Err(MetadataError::UnexpectedStorageKeyType {
+                        expected: format!("{expected_key_type:?}"),
+                        got: key_type.to_string(),
+                        pallet_name: PALLET_NAME.to_string(),
+                        storage_entry_name: storage_entry_name.to_string(),
+                    })
+                } else {
+                    Ok(())
+                }
+            })
+        },
+    )
 }
 
 pub async fn fetch_block_hash(
@@ -53,36 +69,17 @@ pub async fn fetch_block_hash(
     metadata: AnyRuntimeMetadata<'_>,
     runtime_version: &RuntimeVersion,
 ) -> Result<Vec<u8>, Error> {
-    let storage_entry_name = "BlockHash";
-
-    let current_block_keys: [[u8; 4]; 1] = [block_number.to_le_bytes()]; // CurrentBlock
-    let storage_key = encode_storage_key_any(
+    let block_number = U256::from(block_number).0;
+    fetch(
         PALLET_NAME,
-        storage_entry_name,
-        current_block_keys,
+        "BlockHash",
+        [block_number],
+        rpc,
+        block_hash,
         metadata,
-        runtime_version.spec_version,
-    )?;
-
-    let storage_key_hex = StorageKeyHex::from(storage_key.0);
-
-    let StorageValueBytes(storage_bytes) = rpc
-        .state_get_storage(&storage_key_hex, block_hash)
-        .await?
-        .ok_or(Error::StorageValueNotFound(storage_key_hex.0))?;
-
-    let value = decode_storage_value_any(
-        storage_bytes,
-        PALLET_NAME,
-        storage_entry_name,
-        metadata,
-        runtime_version.spec_version,
-    )?;
-
-    Ok(match value {
-        AnyStorageValue::Legacy(value) => decode_as_bytestring(*value)?,
-        AnyStorageValue::Modern(value) => decode_as_bytestring(value)?,
-    })
+        runtime_version,
+    )
+    .await
 }
 
 pub async fn fetch_block(
@@ -91,34 +88,14 @@ pub async fn fetch_block(
     metadata: AnyRuntimeMetadata<'_>,
     runtime_version: &RuntimeVersion,
 ) -> Result<Block, Error> {
-    let storage_entry_name = "CurrentBlock";
-
-    let current_block_keys: [u8; 0] = []; // CurrentBlock
-    let storage_key = encode_storage_key_any(
+    fetch(
         PALLET_NAME,
-        storage_entry_name,
-        current_block_keys,
+        "CurrentBlock",
+        (),
+        rpc,
+        block_hash,
         metadata,
-        runtime_version.spec_version,
-    )?;
-
-    let storage_key_hex = StorageKeyHex::from(storage_key.0);
-
-    let StorageValueBytes(storage_bytes) = rpc
-        .state_get_storage(&storage_key_hex, block_hash)
-        .await?
-        .ok_or(Error::StorageValueNotFound(storage_key_hex.0))?;
-
-    let value = decode_storage_value_any(
-        storage_bytes,
-        PALLET_NAME,
-        storage_entry_name,
-        metadata,
-        runtime_version.spec_version,
-    )?;
-
-    Ok(match value {
-        AnyStorageValue::Legacy(value) => decode_as_block(*value)?,
-        AnyStorageValue::Modern(value) => decode_as_block(value)?,
-    })
+        runtime_version,
+    )
+    .await
 }

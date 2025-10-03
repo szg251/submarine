@@ -30,6 +30,16 @@ pub enum MetadataError {
         pallet_name: String,
         storage_entry_name: String,
     },
+
+    #[error(
+        "Expected a storage key of {expected} but got {got} for {pallet_name} {storage_entry_name}"
+    )]
+    UnexpectedStorageKeyType {
+        expected: String,
+        got: String,
+        pallet_name: String,
+        storage_entry_name: String,
+    },
 }
 
 #[derive(Debug, Error)]
@@ -219,109 +229,197 @@ impl<'a> AnyStorageEntry<'a> {
         }
     }
 
-    pub fn type_as_str(
+    /// Returns the key and value types as a tuple
+    /// DoubleMap and NMap contain multiple keys hence the use of a Vector
+    pub fn types_as_str(
         &self,
         type_registry: Option<&PortableRegistry>,
-    ) -> Result<String, MetadataError> {
+    ) -> Result<(Vec<String>, String), MetadataError> {
         match self {
             Self::V8(entry) => match entry.ty {
-                frame_metadata::v8::StorageEntryType::Plain(ref type_id) => {
-                    Ok(type_id.unwrap_decode_different()?.to_owned())
+                frame_metadata::v8::StorageEntryType::Plain(ref value) => {
+                    Ok((vec![], value.unwrap_decode_different()?.to_owned()))
                 }
                 frame_metadata::v8::StorageEntryType::Map {
-                    value: ref type_id, ..
-                } => Ok(type_id.unwrap_decode_different()?.to_owned()),
+                    ref key, ref value, ..
+                } => Ok((
+                    vec![key.unwrap_decode_different()?.to_owned()],
+                    value.unwrap_decode_different()?.to_owned(),
+                )),
                 frame_metadata::v8::StorageEntryType::DoubleMap {
-                    value: ref type_id, ..
-                } => Ok(type_id.unwrap_decode_different()?.to_owned()),
+                    ref key1,
+                    ref key2,
+                    ref value,
+                    ..
+                } => Ok((
+                    vec![
+                        key1.unwrap_decode_different()?.to_owned(),
+                        key2.unwrap_decode_different()?.to_owned(),
+                    ],
+                    value.unwrap_decode_different()?.to_owned(),
+                )),
             },
             Self::V9(entry) => match entry.ty {
-                frame_metadata::v9::StorageEntryType::Plain(ref type_id) => {
-                    Ok(type_id.unwrap_decode_different()?.to_owned())
+                frame_metadata::v9::StorageEntryType::Plain(ref value) => {
+                    Ok((vec![], value.unwrap_decode_different()?.to_owned()))
                 }
                 frame_metadata::v9::StorageEntryType::Map {
-                    value: ref type_id, ..
-                } => Ok(type_id.unwrap_decode_different()?.to_owned()),
+                    ref key, ref value, ..
+                } => Ok((
+                    vec![key.unwrap_decode_different()?.to_owned()],
+                    value.unwrap_decode_different()?.to_owned(),
+                )),
                 frame_metadata::v9::StorageEntryType::DoubleMap {
-                    value: ref type_id, ..
-                } => Ok(type_id.unwrap_decode_different()?.to_owned()),
+                    ref key1,
+                    ref key2,
+                    ref value,
+                    ..
+                } => Ok((
+                    vec![
+                        key1.unwrap_decode_different()?.to_owned(),
+                        key2.unwrap_decode_different()?.to_owned(),
+                    ],
+                    value.unwrap_decode_different()?.to_owned(),
+                )),
             },
             Self::V10(entry) => match entry.ty {
-                frame_metadata::v10::StorageEntryType::Plain(ref type_id) => {
-                    Ok(type_id.unwrap_decode_different()?.to_owned())
+                frame_metadata::v10::StorageEntryType::Plain(ref value) => {
+                    Ok((vec![], value.unwrap_decode_different()?.to_owned()))
                 }
                 frame_metadata::v10::StorageEntryType::Map {
-                    value: ref type_id, ..
-                } => Ok(type_id.unwrap_decode_different()?.to_owned()),
+                    ref key, ref value, ..
+                } => Ok((
+                    vec![key.unwrap_decode_different()?.to_owned()],
+                    value.unwrap_decode_different()?.to_owned(),
+                )),
                 frame_metadata::v10::StorageEntryType::DoubleMap {
-                    value: ref type_id, ..
-                } => Ok(type_id.unwrap_decode_different()?.to_owned()),
+                    ref key1,
+                    ref key2,
+                    ref value,
+                    ..
+                } => Ok((
+                    vec![
+                        key1.unwrap_decode_different()?.to_owned(),
+                        key2.unwrap_decode_different()?.to_owned(),
+                    ],
+                    value.unwrap_decode_different()?.to_owned(),
+                )),
             },
             Self::V11(entry) => match entry.ty {
-                frame_metadata::v11::StorageEntryType::Plain(ref type_id) => {
-                    Ok(type_id.unwrap_decode_different()?.to_owned())
+                frame_metadata::v11::StorageEntryType::Plain(ref value) => {
+                    Ok((vec![], value.unwrap_decode_different()?.to_owned()))
                 }
                 frame_metadata::v11::StorageEntryType::Map {
-                    value: ref type_id, ..
-                } => Ok(type_id.unwrap_decode_different()?.to_owned()),
+                    ref key, ref value, ..
+                } => Ok((
+                    vec![key.unwrap_decode_different()?.to_owned()],
+                    value.unwrap_decode_different()?.to_owned(),
+                )),
                 frame_metadata::v11::StorageEntryType::DoubleMap {
-                    value: ref type_id, ..
-                } => Ok(type_id.unwrap_decode_different()?.to_owned()),
+                    ref key1,
+                    ref key2,
+                    ref value,
+                    ..
+                } => Ok((
+                    vec![
+                        key1.unwrap_decode_different()?.to_owned(),
+                        key2.unwrap_decode_different()?.to_owned(),
+                    ],
+                    value.unwrap_decode_different()?.to_owned(),
+                )),
             },
             Self::V12(entry) => match entry.ty {
-                frame_metadata::v12::StorageEntryType::Plain(ref type_id) => {
-                    Ok(type_id.unwrap_decode_different()?.to_owned())
+                frame_metadata::v12::StorageEntryType::Plain(ref value) => {
+                    Ok((vec![], value.unwrap_decode_different()?.to_owned()))
                 }
                 frame_metadata::v12::StorageEntryType::Map {
-                    value: ref type_id, ..
-                } => Ok(type_id.unwrap_decode_different()?.to_owned()),
+                    ref key, ref value, ..
+                } => Ok((
+                    vec![key.unwrap_decode_different()?.to_owned()],
+                    value.unwrap_decode_different()?.to_owned(),
+                )),
                 frame_metadata::v12::StorageEntryType::DoubleMap {
-                    value: ref type_id, ..
-                } => Ok(type_id.unwrap_decode_different()?.to_owned()),
+                    ref key1,
+                    ref key2,
+                    ref value,
+                    ..
+                } => Ok((
+                    vec![
+                        key1.unwrap_decode_different()?.to_owned(),
+                        key2.unwrap_decode_different()?.to_owned(),
+                    ],
+                    value.unwrap_decode_different()?.to_owned(),
+                )),
             },
             Self::V13(entry) => match entry.ty {
-                frame_metadata::v13::StorageEntryType::Plain(ref type_id) => {
-                    Ok(type_id.unwrap_decode_different()?.to_owned())
+                frame_metadata::v13::StorageEntryType::Plain(ref value) => {
+                    Ok((vec![], value.unwrap_decode_different()?.to_owned()))
                 }
                 frame_metadata::v13::StorageEntryType::Map {
-                    value: ref type_id, ..
-                } => Ok(type_id.unwrap_decode_different()?.to_owned()),
+                    ref key, ref value, ..
+                } => Ok((
+                    vec![key.unwrap_decode_different()?.to_owned()],
+                    value.unwrap_decode_different()?.to_owned(),
+                )),
                 frame_metadata::v13::StorageEntryType::DoubleMap {
-                    value: ref type_id, ..
-                } => Ok(type_id.unwrap_decode_different()?.to_owned()),
+                    ref key1,
+                    ref key2,
+                    ref value,
+                    ..
+                } => Ok((
+                    vec![
+                        key1.unwrap_decode_different()?.to_owned(),
+                        key2.unwrap_decode_different()?.to_owned(),
+                    ],
+                    value.unwrap_decode_different()?.to_owned(),
+                )),
                 frame_metadata::v13::StorageEntryType::NMap {
-                    value: ref type_id, ..
-                } => Ok(type_id.unwrap_decode_different()?.to_owned()),
+                    ref keys,
+                    ref value,
+                    ..
+                } => Ok((
+                    keys.unwrap_decode_different()?.to_owned(),
+                    value.unwrap_decode_different()?.to_owned(),
+                )),
             },
             Self::V14(entry) => {
                 let type_registry = type_registry.ok_or(UnresolvableTypeError::RegistryNotFound)?;
 
-                let ty = match entry.ty {
-                    frame_metadata::v14::StorageEntryType::Plain(type_id) => type_id,
-                    frame_metadata::v14::StorageEntryType::Map { value: type_id, .. } => type_id,
-                };
-
-                Ok(resolve_type_to_str(ty.id, type_registry)?)
+                match entry.ty {
+                    frame_metadata::v14::StorageEntryType::Plain(value) => {
+                        Ok((vec![], resolve_type_to_str(value.id, type_registry)?))
+                    }
+                    frame_metadata::v14::StorageEntryType::Map { key, value, .. } => Ok((
+                        vec![resolve_type_to_str(key.id, type_registry)?],
+                        resolve_type_to_str(value.id, type_registry)?,
+                    )),
+                }
             }
             Self::V15(entry) => {
                 let type_registry = type_registry.ok_or(UnresolvableTypeError::RegistryNotFound)?;
 
-                let ty = match entry.ty {
-                    frame_metadata::v14::StorageEntryType::Plain(type_id) => type_id,
-                    frame_metadata::v14::StorageEntryType::Map { value: type_id, .. } => type_id,
-                };
-
-                Ok(resolve_type_to_str(ty.id, type_registry)?)
+                match entry.ty {
+                    frame_metadata::v14::StorageEntryType::Plain(value) => {
+                        Ok((vec![], resolve_type_to_str(value.id, type_registry)?))
+                    }
+                    frame_metadata::v14::StorageEntryType::Map { key, value, .. } => Ok((
+                        vec![resolve_type_to_str(key.id, type_registry)?],
+                        resolve_type_to_str(value.id, type_registry)?,
+                    )),
+                }
             }
             Self::V16(entry) => {
                 let type_registry = type_registry.ok_or(UnresolvableTypeError::RegistryNotFound)?;
 
-                let ty = match entry.ty {
-                    frame_metadata::v14::StorageEntryType::Plain(type_id) => type_id,
-                    frame_metadata::v14::StorageEntryType::Map { value: type_id, .. } => type_id,
-                };
-
-                Ok(resolve_type_to_str(ty.id, type_registry)?)
+                match entry.ty {
+                    frame_metadata::v14::StorageEntryType::Plain(value) => {
+                        Ok((vec![], resolve_type_to_str(value.id, type_registry)?))
+                    }
+                    frame_metadata::v14::StorageEntryType::Map { key, value, .. } => Ok((
+                        vec![resolve_type_to_str(key.id, type_registry)?],
+                        resolve_type_to_str(value.id, type_registry)?,
+                    )),
+                }
             }
         }
     }

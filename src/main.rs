@@ -18,6 +18,7 @@ use crate::{
 
 mod decoder;
 mod error;
+mod fetch;
 mod node_rpc;
 mod pallets;
 

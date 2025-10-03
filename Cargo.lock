@@ -2316,6 +2316,7 @@ dependencies = [
  "prettytable-rs",
  "rayon",
  "scale-decode",
+ "scale-encode",
  "scale-info",
  "scale-info-legacy",
  "scale-value",
