@@ -1,4 +1,3 @@
-use chrono::{DateTime, Utc};
 use clap::Parser;
 use frame_metadata::RuntimeMetadataPrefixed;
 use parity_scale_codec::Decode;
@@ -6,27 +5,21 @@ use prettytable::{Table, row, table};
 use tracing::{Instrument, Level, debug, info, span, warn};
 
 use crate::{
-    decoder::{
-        events::{Phase, SYSTEM_EVENTS_KEY, decode_events_any},
-        extrinsic::decode_extrinsic_any,
-        metadata::AnyRuntimeMetadata,
-        pallets::ethereum,
-        storage::{AnyStorageValue, decode_storage_value_any, encode_storage_key_any},
-        value_parser::parse_timestamp,
-    },
+    decoder::{extrinsic::decode_extrinsic_any, metadata::AnyRuntimeMetadata},
     error::Error,
     node_rpc::{
         client::NodeRPC,
         models::{
             BlockHashHex, BlockNumberHex, ChainMetadataBytes, ExtrinsicBytes, RuntimeVersion,
-            StorageKeyHex, StorageValueBytes,
         },
     },
+    pallets::system::decoder::Phase,
 };
 
 mod decoder;
 mod error;
 mod node_rpc;
+mod pallets;
 
 /// Infinity Query command line interface
 #[derive(clap::Parser, Debug)]
@@ -108,7 +101,8 @@ async fn fetch_block(rpc: &NodeRPC, block_number: u32) -> Result<(), Error> {
 
     let runtime_version = rpc.state_get_runtime_version(&block_hash).await?;
 
-    let timestamp = fetch_timestamp(rpc, &block_hash, metadata, &runtime_version).await?;
+    let timestamp =
+        pallets::timestamp::fetch_timestamp(rpc, &block_hash, metadata, &runtime_version).await?;
 
     let mut block_table = table![
         ["Timestamp", timestamp],
@@ -153,16 +147,22 @@ async fn fetch_block(rpc: &NodeRPC, block_number: u32) -> Result<(), Error> {
     fetch_events(rpc, block_number, &block_hash, metadata, &runtime_version).await?;
 
     if pallets.contains("Ethereum") {
-        ethereum::verify_pallet_metadata(metadata)?;
+        pallets::ethereum::verify_pallet_metadata(metadata)?;
 
-        let ethereum_block = ethereum::fetch_block(rpc, &block_hash, metadata, &runtime_version)
-            .instrument(span!(Level::INFO, "Fetch Ethereum block", ?block_hash))
-            .await?;
+        let ethereum_block =
+            pallets::ethereum::fetch_block(rpc, &block_hash, metadata, &runtime_version)
+                .instrument(span!(Level::INFO, "Fetch Ethereum block", ?block_hash))
+                .await?;
         debug!(?ethereum_block);
 
-        let ethereum_block_hash =
-            ethereum::fetch_block_hash(rpc, block_number, &block_hash, metadata, &runtime_version)
-                .await?;
+        let ethereum_block_hash = pallets::ethereum::fetch_block_hash(
+            rpc,
+            block_number,
+            &block_hash,
+            metadata,
+            &runtime_version,
+        )
+        .await?;
 
         let mut block_table = table![
             ["Status"],
@@ -183,45 +183,6 @@ async fn fetch_block(rpc: &NodeRPC, block_number: u32) -> Result<(), Error> {
     Ok(())
 }
 
-async fn fetch_timestamp(
-    rpc: &NodeRPC,
-    block_hash: &BlockHashHex,
-    metadata: AnyRuntimeMetadata<'_>,
-    runtime_version: &RuntimeVersion,
-) -> Result<DateTime<Utc>, Error> {
-    let pallet_name = "Timestamp";
-    let storage_entry_name = "Now";
-
-    let timestamp_keys: [u8; 0] = [];
-    let timestamp_key = encode_storage_key_any(
-        pallet_name,
-        storage_entry_name,
-        timestamp_keys,
-        metadata,
-        runtime_version.spec_version,
-    )?;
-
-    let timestamp_key_hex = StorageKeyHex::from(timestamp_key.0);
-
-    let StorageValueBytes(storage_bytes) = rpc
-        .state_get_storage(&timestamp_key_hex, block_hash)
-        .await?
-        .ok_or(Error::StorageValueNotFound(timestamp_key_hex.0))?;
-
-    let value = decode_storage_value_any(
-        storage_bytes,
-        pallet_name,
-        storage_entry_name,
-        metadata,
-        runtime_version.spec_version,
-    )?;
-
-    Ok(match value {
-        AnyStorageValue::Legacy(value) => parse_timestamp(*value)?,
-        AnyStorageValue::Modern(value) => parse_timestamp(value)?,
-    })
-}
-
 async fn fetch_events(
     rpc: &NodeRPC,
     block_number: u32,
@@ -229,37 +190,28 @@ async fn fetch_events(
     metadata: AnyRuntimeMetadata<'_>,
     runtime_version: &RuntimeVersion,
 ) -> Result<(), Error> {
-    let system_events_key_hex = StorageKeyHex(SYSTEM_EVENTS_KEY.to_string());
-
     let mut events_table = Table::new();
+    let events = pallets::system::fetch_events(rpc, block_hash, metadata, runtime_version).await?;
     events_table.set_format(*prettytable::format::consts::FORMAT_NO_LINESEP_WITH_TITLE);
 
-    if let Some(StorageValueBytes(events_bytes)) = rpc
-        .state_get_storage(&system_events_key_hex, block_hash)
-        .await?
-    {
-        decode_events_any(events_bytes, metadata, runtime_version.spec_version)?
-            .iter()
-            .enumerate()
-            .for_each(|(i, event)| {
-                let event_id = format!("{block_number}-{i}");
-                let (ty, ext_id) = match event.phase {
-                    Phase::ApplyExtrinsic(ext_idx) => {
-                        ("Extrinsic", Some(format!("{block_number}-{ext_idx}")))
-                    }
-                    Phase::Initialization => ("Initialization", None),
-                    Phase::Finalization => ("Finalization", None),
-                };
-                let action = format!("{} ({})", event.event.name, event.event.action);
-                events_table.add_row(row![
-                    event_id,
-                    ext_id.unwrap_or(String::from("-")),
-                    action,
-                    ty
-                ]);
-                debug!(?event);
-            });
-    }
+    events.iter().enumerate().for_each(|(i, event)| {
+        let event_id = format!("{block_number}-{i}");
+        let (ty, ext_id) = match event.phase {
+            Phase::ApplyExtrinsic(ext_idx) => {
+                ("Extrinsic", Some(format!("{block_number}-{ext_idx}")))
+            }
+            Phase::Initialization => ("Initialization", None),
+            Phase::Finalization => ("Finalization", None),
+        };
+        let action = format!("{} ({})", event.event.name, event.event.action);
+        events_table.add_row(row![
+            event_id,
+            ext_id.unwrap_or(String::from("-")),
+            action,
+            ty
+        ]);
+        debug!(?event);
+    });
 
     println!("Events");
     events_table.printstd();

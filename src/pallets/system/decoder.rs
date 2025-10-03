@@ -1,45 +1,30 @@
 use scale_value::{Composite, Primitive, Value, ValueDef, Variant};
 
-use crate::decoder::{
-    metadata::AnyRuntimeMetadata,
-    storage::{AnyStorageValue, decode_storage_value_any},
-    value_parser::{ValueDecoderError, WithErrorSpan, parse_record, parse_vec},
+use crate::decoder::value_decoder::{
+    ValueDecoderError, WithErrorSpan, decode_as_record, decode_as_vec,
 };
+
+pub const PALLET_NAME: &str = "System";
 
 pub const SYSTEM_EVENTS_KEY: &str =
     "0x26aa394eea5630e07c48ae0c9558cef780d41e5e16056765bc8461851072c9d7";
 
-/// Decodes any version of System.Events storage value
-pub fn decode_events_any(
-    events_bytes: impl AsRef<[u8]>,
-    metadata: AnyRuntimeMetadata<'_>,
-    spec_version: u64,
-) -> Result<Vec<EventRecord>, ValueDecoderError> {
-    let raw_value =
-        decode_storage_value_any(events_bytes, "System", "Events", metadata, spec_version)?;
-
-    match raw_value {
-        AnyStorageValue::Legacy(value) => parse_events(*value).add_error_span("events"),
-        AnyStorageValue::Modern(value) => parse_events(value).add_error_span("events"),
-    }
-}
-
-fn parse_events<T>(value: Value<T>) -> Result<Vec<EventRecord>, ValueDecoderError>
+pub fn decode_as_events<T>(value: Value<T>) -> Result<Vec<EventRecord>, ValueDecoderError>
 where
     T: std::fmt::Debug,
 {
-    parse_vec(value)?
+    decode_as_vec(value)?
         .into_iter()
-        .map(parse_event_record)
+        .map(decode_as_event_record)
         .collect::<Result<Vec<_>, _>>()
         .add_error_span("event_record")
 }
 
-fn parse_event_record<T>(value: Value<T>) -> Result<EventRecord, ValueDecoderError>
+fn decode_as_event_record<T>(value: Value<T>) -> Result<EventRecord, ValueDecoderError>
 where
     T: std::fmt::Debug,
 {
-    let mut record = parse_record(value)?;
+    let mut record = decode_as_record(value)?;
 
     let phase = record
         .remove("phase")
@@ -47,7 +32,7 @@ where
             field_name: "phase".to_string(),
             span: String::new(),
         })
-        .and_then(parse_phase)
+        .and_then(decode_as_phase)
         .add_error_span("phase")?;
 
     let event = record
@@ -56,7 +41,7 @@ where
             field_name: "event".to_string(),
             span: String::new(),
         })
-        .and_then(parse_event)
+        .and_then(decode_as_event)
         .add_error_span("event")?;
 
     let topics = record
@@ -65,7 +50,7 @@ where
             field_name: "topics".to_string(),
             span: String::new(),
         })
-        .and_then(parse_vec)
+        .and_then(decode_as_vec)
         .map(|vec| vec.iter().map(scale_value::stringify::to_string).collect())
         .add_error_span("topics")?;
 
@@ -76,7 +61,7 @@ where
     })
 }
 
-fn parse_phase<T>(value: Value<T>) -> Result<Phase, ValueDecoderError>
+fn decode_as_phase<T>(value: Value<T>) -> Result<Phase, ValueDecoderError>
 where
     T: std::fmt::Debug,
 {
@@ -138,7 +123,7 @@ where
     }
 }
 
-fn parse_event<T>(value: Value<T>) -> Result<Event, ValueDecoderError>
+fn decode_as_event<T>(value: Value<T>) -> Result<Event, ValueDecoderError>
 where
     T: std::fmt::Debug,
 {

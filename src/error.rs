@@ -6,7 +6,7 @@ use crate::{
         extrinsic::ExtrinsicDecoderError,
         metadata::MetadataError,
         storage::{StorageKeyEncoderError, StorageValueDecoderError},
-        value_parser::ValueDecoderError,
+        value_decoder::ValueDecoderError,
     },
     node_rpc::client::NodeRPCError,
 };

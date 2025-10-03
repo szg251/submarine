@@ -2,55 +2,12 @@
 use chrono::{DateTime, Utc};
 use scale_value::Value;
 
-use crate::{
-    decoder::{
-        metadata::{AnyRuntimeMetadata, MetadataError},
-        storage::{AnyStorageValue, decode_storage_value_any, encode_storage_key_any},
-        value_parser::{
-            ValueDecoderError, WithErrorSpan, parse_bytestring, parse_record, parse_timestamp,
-            parse_vec,
-        },
-    },
-    error::Error,
-    node_rpc::{
-        client::NodeRPC,
-        models::{BlockHashHex, RuntimeVersion, StorageKeyHex, StorageValueBytes},
-    },
+use crate::decoder::value_decoder::{
+    ValueDecoderError, WithErrorSpan, decode_as_bytestring, decode_as_record, decode_as_timestamp,
+    decode_as_vec,
 };
 
 const PALLET_NAME: &str = "Ethereum";
-
-pub fn verify_pallet_metadata(metadata: AnyRuntimeMetadata<'_>) -> Result<(), MetadataError> {
-    let type_registry = metadata.type_registry();
-
-    let storage_types = [
-        (
-            "CurrentBlock",
-            "ethereum::block::Block<ethereum::transaction::LegacyTransaction>",
-        ),
-        ("BlockHash", "primitive_types::H256"),
-    ];
-
-    storage_types
-        .iter()
-        .try_for_each(|(storage_entry_name, expected_type)| {
-            let type_name = metadata
-                .pallet_metadata(PALLET_NAME)?
-                .storage_entry(storage_entry_name)?
-                .type_as_str(type_registry)?;
-
-            if &type_name[..] == *expected_type {
-                Ok(())
-            } else {
-                Err(MetadataError::UnexpectedStorageValueType {
-                    expected: expected_type.to_string(),
-                    got: type_name,
-                    pallet_name: PALLET_NAME.to_string(),
-                    storage_entry_name: storage_entry_name.to_string(),
-                })
-            }
-        })
-}
 
 #[derive(Debug)]
 pub struct Block {
@@ -76,88 +33,11 @@ pub struct BlockHeader {
     pub nonce: Vec<u8>,
 }
 
-pub async fn fetch_block_hash(
-    rpc: &NodeRPC,
-    block_number: u32,
-    block_hash: &BlockHashHex,
-    metadata: AnyRuntimeMetadata<'_>,
-    runtime_version: &RuntimeVersion,
-) -> Result<Vec<u8>, Error> {
-    let storage_entry_name = "BlockHash";
-
-    let current_block_keys: [[u8; 4]; 1] = [block_number.to_le_bytes()]; // CurrentBlock
-    let storage_key = encode_storage_key_any(
-        PALLET_NAME,
-        storage_entry_name,
-        current_block_keys,
-        metadata,
-        runtime_version.spec_version,
-    )?;
-
-    let storage_key_hex = StorageKeyHex::from(storage_key.0);
-
-    let StorageValueBytes(storage_bytes) = rpc
-        .state_get_storage(&storage_key_hex, block_hash)
-        .await?
-        .ok_or(Error::StorageValueNotFound(storage_key_hex.0))?;
-
-    let value = decode_storage_value_any(
-        storage_bytes,
-        PALLET_NAME,
-        storage_entry_name,
-        metadata,
-        runtime_version.spec_version,
-    )?;
-
-    Ok(match value {
-        AnyStorageValue::Legacy(value) => parse_bytestring(*value)?,
-        AnyStorageValue::Modern(value) => parse_bytestring(value)?,
-    })
-}
-
-pub async fn fetch_block(
-    rpc: &NodeRPC,
-    block_hash: &BlockHashHex,
-    metadata: AnyRuntimeMetadata<'_>,
-    runtime_version: &RuntimeVersion,
-) -> Result<Block, Error> {
-    let storage_entry_name = "CurrentBlock";
-
-    let current_block_keys: [u8; 0] = []; // CurrentBlock
-    let storage_key = encode_storage_key_any(
-        PALLET_NAME,
-        storage_entry_name,
-        current_block_keys,
-        metadata,
-        runtime_version.spec_version,
-    )?;
-
-    let storage_key_hex = StorageKeyHex::from(storage_key.0);
-
-    let StorageValueBytes(storage_bytes) = rpc
-        .state_get_storage(&storage_key_hex, block_hash)
-        .await?
-        .ok_or(Error::StorageValueNotFound(storage_key_hex.0))?;
-
-    let value = decode_storage_value_any(
-        storage_bytes,
-        PALLET_NAME,
-        storage_entry_name,
-        metadata,
-        runtime_version.spec_version,
-    )?;
-
-    Ok(match value {
-        AnyStorageValue::Legacy(value) => parse_block(*value)?,
-        AnyStorageValue::Modern(value) => parse_block(value)?,
-    })
-}
-
-fn parse_block<T>(value: Value<T>) -> Result<Block, ValueDecoderError>
+pub fn decode_as_block<T>(value: Value<T>) -> Result<Block, ValueDecoderError>
 where
     T: std::fmt::Debug,
 {
-    let mut record = parse_record(value)?;
+    let mut record = decode_as_record(value)?;
 
     let header = record
         .remove("header")
@@ -165,7 +45,7 @@ where
             field_name: "header".to_string(),
             span: String::new(),
         })
-        .and_then(parse_block_header)
+        .and_then(decode_as_block_header)
         .add_error_span("header")?;
 
     let transactions = record
@@ -174,7 +54,7 @@ where
             field_name: "transactions".to_string(),
             span: String::new(),
         })
-        .and_then(parse_vec)
+        .and_then(decode_as_vec)
         .map(|vec| vec.iter().map(|tx| tx.to_string()).collect())
         .add_error_span("transactions")?;
 
@@ -183,11 +63,12 @@ where
         transactions,
     })
 }
-fn parse_block_header<T>(value: Value<T>) -> Result<BlockHeader, ValueDecoderError>
+
+fn decode_as_block_header<T>(value: Value<T>) -> Result<BlockHeader, ValueDecoderError>
 where
     T: std::fmt::Debug,
 {
-    let mut record = parse_record(value)?;
+    let mut record = decode_as_record(value)?;
 
     let parent_hash = record
         .remove("parent_hash")
@@ -195,7 +76,7 @@ where
             field_name: "parent_hash".to_string(),
             span: String::new(),
         })
-        .and_then(parse_bytestring)
+        .and_then(decode_as_bytestring)
         .add_error_span("parent_hash")?;
 
     let ommers_hash = record
@@ -204,7 +85,7 @@ where
             field_name: "ommers_hash".to_string(),
             span: String::new(),
         })
-        .and_then(parse_bytestring)
+        .and_then(decode_as_bytestring)
         .add_error_span("ommers_hash")?;
 
     let beneficiary = record
@@ -213,7 +94,7 @@ where
             field_name: "beneficiary".to_string(),
             span: String::new(),
         })
-        .and_then(parse_bytestring)
+        .and_then(decode_as_bytestring)
         .add_error_span("beneficiary")?;
 
     let transactions_root = record
@@ -222,7 +103,7 @@ where
             field_name: "transactions_root".to_string(),
             span: String::new(),
         })
-        .and_then(parse_bytestring)
+        .and_then(decode_as_bytestring)
         .add_error_span("transactions_root")?;
 
     let receipts_root = record
@@ -231,7 +112,7 @@ where
             field_name: "receipts_root".to_string(),
             span: String::new(),
         })
-        .and_then(parse_bytestring)
+        .and_then(decode_as_bytestring)
         .add_error_span("receipts_root")?;
 
     let logs_bloom = record
@@ -240,7 +121,7 @@ where
             field_name: "logs_bloom".to_string(),
             span: String::new(),
         })
-        .and_then(parse_bytestring)
+        .and_then(decode_as_bytestring)
         .add_error_span("logs_bloom")?;
 
     let difficulty = record
@@ -249,7 +130,7 @@ where
             field_name: "difficulty".to_string(),
             span: String::new(),
         })
-        .and_then(parse_bytestring)
+        .and_then(decode_as_bytestring)
         .add_error_span("difficulty")?;
 
     let number = record
@@ -258,7 +139,7 @@ where
             field_name: "number".to_string(),
             span: String::new(),
         })
-        .and_then(parse_bytestring)
+        .and_then(decode_as_bytestring)
         .add_error_span("number")?;
 
     let gas_limit = record
@@ -267,7 +148,7 @@ where
             field_name: "gas_limit".to_string(),
             span: String::new(),
         })
-        .and_then(parse_bytestring)
+        .and_then(decode_as_bytestring)
         .add_error_span("gas_limit")?;
 
     let gas_used = record
@@ -276,7 +157,7 @@ where
             field_name: "gas_used".to_string(),
             span: String::new(),
         })
-        .and_then(parse_bytestring)
+        .and_then(decode_as_bytestring)
         .add_error_span("gas_used")?;
 
     let timestamp = record
@@ -285,7 +166,7 @@ where
             field_name: "timestamp".to_string(),
             span: String::new(),
         })
-        .and_then(parse_timestamp)
+        .and_then(decode_as_timestamp)
         .add_error_span("timestamp")?;
 
     let extra_data = record
@@ -303,7 +184,7 @@ where
             field_name: "mix_hash".to_string(),
             span: String::new(),
         })
-        .and_then(parse_bytestring)
+        .and_then(decode_as_bytestring)
         .add_error_span("mix_hash")?;
 
     let nonce = record
@@ -312,7 +193,7 @@ where
             field_name: "nonce".to_string(),
             span: String::new(),
         })
-        .and_then(parse_bytestring)
+        .and_then(decode_as_bytestring)
         .add_error_span("nonce")?;
 
     Ok(BlockHeader {

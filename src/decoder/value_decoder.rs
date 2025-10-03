@@ -105,8 +105,7 @@ fn append_span(inner_span: &str, outer_span: &str) -> String {
     }
 }
 
-/// Parse a `ValueDef::Composite(Composite::Unnamed(_))` to a `Vec`
-pub fn parse_vec<T>(value: Value<T>) -> Result<Vec<Value<T>>, ValueDecoderError>
+pub fn decode_as_vec<T>(value: Value<T>) -> Result<Vec<Value<T>>, ValueDecoderError>
 where
     T: std::fmt::Debug,
 {
@@ -121,7 +120,7 @@ where
 }
 
 /// Parse a `ValueDef::Composite(Composite::Named(_))` to a `HashMap`
-pub fn parse_record<T>(value: Value<T>) -> Result<HashMap<String, Value<T>>, ValueDecoderError>
+pub fn decode_as_record<T>(value: Value<T>) -> Result<HashMap<String, Value<T>>, ValueDecoderError>
 where
     T: std::fmt::Debug,
 {
@@ -138,7 +137,7 @@ where
 }
 
 /// Parse a `ValueDef::Composite(Composite::Unnamed(_))` to a `Vec<u8>`
-pub fn parse_bytestring<T>(value: Value<T>) -> Result<Vec<u8>, ValueDecoderError>
+pub fn decode_as_bytestring<T>(value: Value<T>) -> Result<Vec<u8>, ValueDecoderError>
 where
     T: std::fmt::Debug,
 {
@@ -176,7 +175,7 @@ where
     }
 }
 
-pub fn parse_timestamp<T>(value: Value<T>) -> Result<DateTime<Utc>, ValueDecoderError>
+pub fn decode_as_timestamp<T>(value: Value<T>) -> Result<DateTime<Utc>, ValueDecoderError>
 where
     T: std::fmt::Debug,
 {
