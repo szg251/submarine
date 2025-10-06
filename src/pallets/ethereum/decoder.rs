@@ -1,218 +1,144 @@
 use std::collections::HashMap;
 
 /// Pallet defined storage parsers and verificators for pallet-ethereum
-use chrono::{DateTime, Utc};
+use ethereum::{Block, Header, LegacyTransaction, TransactionAction, legacy::TransactionSignature};
+use ethereum_types::{Bloom, H64};
+use scale_decode::ext::primitive_types::{H160, H256, U256};
 use scale_value::Value;
 
-use crate::decoder::value_decoder::{ValueDecoder, ValueDecoderError, WithErrorSpan};
+use crate::decoder::value_decoder::{ValueDecoder, ValueDecoderError, get_field};
 
-const PALLET_NAME: &str = "Ethereum";
-
-#[derive(Debug)]
-pub struct Block {
-    pub header: BlockHeader,
-    pub transactions: Vec<String>,
-}
-
-#[derive(Debug)]
-pub struct BlockHeader {
-    pub parent_hash: Vec<u8>,
-    pub ommers_hash: Vec<u8>,
-    pub beneficiary: Vec<u8>,
-    pub transactions_root: Vec<u8>,
-    pub receipts_root: Vec<u8>,
-    pub logs_bloom: Vec<u8>,
-    pub difficulty: Vec<u8>,
-    pub number: Vec<u8>,
-    pub gas_limit: Vec<u8>,
-    pub gas_used: Vec<u8>,
-    pub timestamp: DateTime<Utc>,
-    pub extra_data: String,
-    pub mix_hash: Vec<u8>,
-    pub nonce: Vec<u8>,
-}
-
-impl<T> ValueDecoder<T> for Block {
-    fn decode(value: Value<T>) -> Result<Block, ValueDecoderError>
+impl<T, Tx> ValueDecoder<T> for Block<Tx>
+where
+    Tx: ValueDecoder<T>,
+{
+    fn decode(value: Value<T>) -> Result<Block<Tx>, ValueDecoderError>
     where
         T: std::fmt::Debug,
     {
         let mut record = HashMap::decode(value)?;
 
-        let header = record
-            .remove("header")
-            .ok_or(ValueDecoderError::RecordFieldNotFound {
-                field_name: "header".to_string(),
-                span: String::new(),
-            })
-            .and_then(BlockHeader::decode)
-            .add_error_span("header")?;
-
-        let transactions = record
-            .remove("transactions")
-            .ok_or(ValueDecoderError::RecordFieldNotFound {
-                field_name: "transactions".to_string(),
-                span: String::new(),
-            })
-            .and_then(Vec::decode)
-            .map(|vec: Vec<Value<T>>| vec.iter().map(|tx| tx.to_string()).collect())
-            .add_error_span("transactions")?;
-
         Ok(Block {
-            header,
-            transactions,
+            header: get_field("header", &mut record)?,
+            transactions: get_field("transactions", &mut record)?,
+            ommers: get_field("ommers", &mut record)?,
         })
     }
 }
 
-impl<T> ValueDecoder<T> for BlockHeader {
-    fn decode(value: Value<T>) -> Result<BlockHeader, ValueDecoderError>
+impl<T> ValueDecoder<T> for Header {
+    fn decode(value: Value<T>) -> Result<Header, ValueDecoderError>
     where
         T: std::fmt::Debug,
     {
         let mut record = HashMap::decode(value)?;
 
-        let parent_hash = record
-            .remove("parent_hash")
-            .ok_or(ValueDecoderError::RecordFieldNotFound {
-                field_name: "parent_hash".to_string(),
-                span: String::new(),
-            })
-            .and_then(<Vec<u8>>::decode)
-            .add_error_span("parent_hash")?;
-
-        let ommers_hash = record
-            .remove("ommers_hash")
-            .ok_or(ValueDecoderError::RecordFieldNotFound {
-                field_name: "ommers_hash".to_string(),
-                span: String::new(),
-            })
-            .and_then(<Vec<u8>>::decode)
-            .add_error_span("ommers_hash")?;
-
-        let beneficiary = record
-            .remove("beneficiary")
-            .ok_or(ValueDecoderError::RecordFieldNotFound {
-                field_name: "beneficiary".to_string(),
-                span: String::new(),
-            })
-            .and_then(<Vec<u8>>::decode)
-            .add_error_span("beneficiary")?;
-
-        let transactions_root = record
-            .remove("transactions_root")
-            .ok_or(ValueDecoderError::RecordFieldNotFound {
-                field_name: "transactions_root".to_string(),
-                span: String::new(),
-            })
-            .and_then(<Vec<u8>>::decode)
-            .add_error_span("transactions_root")?;
-
-        let receipts_root = record
-            .remove("receipts_root")
-            .ok_or(ValueDecoderError::RecordFieldNotFound {
-                field_name: "receipts_root".to_string(),
-                span: String::new(),
-            })
-            .and_then(<Vec<u8>>::decode)
-            .add_error_span("receipts_root")?;
-
-        let logs_bloom = record
-            .remove("logs_bloom")
-            .ok_or(ValueDecoderError::RecordFieldNotFound {
-                field_name: "logs_bloom".to_string(),
-                span: String::new(),
-            })
-            .and_then(<Vec<u8>>::decode)
-            .add_error_span("logs_bloom")?;
-
-        let difficulty = record
-            .remove("difficulty")
-            .ok_or(ValueDecoderError::RecordFieldNotFound {
-                field_name: "difficulty".to_string(),
-                span: String::new(),
-            })
-            .and_then(<Vec<u8>>::decode)
-            .add_error_span("difficulty")?;
-
-        let number = record
-            .remove("number")
-            .ok_or(ValueDecoderError::RecordFieldNotFound {
-                field_name: "number".to_string(),
-                span: String::new(),
-            })
-            .and_then(<Vec<u8>>::decode)
-            .add_error_span("number")?;
-
-        let gas_limit = record
-            .remove("gas_limit")
-            .ok_or(ValueDecoderError::RecordFieldNotFound {
-                field_name: "gas_limit".to_string(),
-                span: String::new(),
-            })
-            .and_then(<Vec<u8>>::decode)
-            .add_error_span("gas_limit")?;
-
-        let gas_used = record
-            .remove("gas_used")
-            .ok_or(ValueDecoderError::RecordFieldNotFound {
-                field_name: "gas_used".to_string(),
-                span: String::new(),
-            })
-            .and_then(<Vec<u8>>::decode)
-            .add_error_span("gas_used")?;
-
-        let timestamp = record
-            .remove("timestamp")
-            .ok_or(ValueDecoderError::RecordFieldNotFound {
-                field_name: "timestamp".to_string(),
-                span: String::new(),
-            })
-            .and_then(DateTime::decode)
-            .add_error_span("timestamp")?;
-
-        let extra_data = record
-            .remove("extra_data")
-            .ok_or(ValueDecoderError::RecordFieldNotFound {
-                field_name: "extra_data".to_string(),
-                span: String::new(),
-            })
-            .map(|value| value.to_string())
-            .add_error_span("extra_data")?;
-
-        let mix_hash = record
-            .remove("mix_hash")
-            .ok_or(ValueDecoderError::RecordFieldNotFound {
-                field_name: "mix_hash".to_string(),
-                span: String::new(),
-            })
-            .and_then(<Vec<u8>>::decode)
-            .add_error_span("mix_hash")?;
-
-        let nonce = record
-            .remove("nonce")
-            .ok_or(ValueDecoderError::RecordFieldNotFound {
-                field_name: "nonce".to_string(),
-                span: String::new(),
-            })
-            .and_then(<Vec<u8>>::decode)
-            .add_error_span("nonce")?;
-
-        Ok(BlockHeader {
-            parent_hash,
-            ommers_hash,
-            beneficiary,
-            transactions_root,
-            receipts_root,
-            logs_bloom,
-            difficulty,
-            number,
-            gas_limit,
-            gas_used,
-            timestamp,
-            extra_data,
-            mix_hash,
-            nonce,
+        Ok(Header {
+            parent_hash: get_field("parent_hash", &mut record)?,
+            ommers_hash: get_field("ommers_hash", &mut record)?,
+            beneficiary: get_field("beneficiary", &mut record)?,
+            state_root: get_field("state_root", &mut record)?,
+            transactions_root: get_field("transactions_root", &mut record)?,
+            receipts_root: get_field("receipts_root", &mut record)?,
+            logs_bloom: get_field("logs_bloom", &mut record)?,
+            difficulty: get_field("difficulty", &mut record)?,
+            number: get_field("number", &mut record)?,
+            gas_limit: get_field("gas_limit", &mut record)?,
+            gas_used: get_field("gas_used", &mut record)?,
+            timestamp: get_field("timestamp", &mut record)?,
+            extra_data: get_field("extra_data", &mut record)?,
+            mix_hash: get_field("mix_hash", &mut record)?,
+            nonce: get_field("nonce", &mut record)?,
         })
+    }
+}
+
+impl<T> ValueDecoder<T> for LegacyTransaction {
+    fn decode(value: Value<T>) -> Result<Self, ValueDecoderError>
+    where
+        Self: Sized,
+        T: std::fmt::Debug,
+    {
+        let mut record = HashMap::decode(value)?;
+
+        Ok(LegacyTransaction {
+            nonce: get_field("nonce", &mut record)?,
+            gas_price: get_field("gas_price", &mut record)?,
+            gas_limit: get_field("gas_limit", &mut record)?,
+            action: get_field("action", &mut record)?,
+            value: get_field("value", &mut record)?,
+            input: get_field("input", &mut record)?,
+            signature: get_field("signature", &mut record)?,
+        })
+    }
+}
+
+impl<T> ValueDecoder<T> for TransactionAction {
+    fn decode(value: Value<T>) -> Result<Self, ValueDecoderError>
+    where
+        Self: Sized,
+        T: std::fmt::Debug,
+    {
+        todo!()
+    }
+}
+
+impl<T> ValueDecoder<T> for TransactionSignature {
+    fn decode(value: Value<T>) -> Result<Self, ValueDecoderError>
+    where
+        Self: Sized,
+        T: std::fmt::Debug,
+    {
+        todo!()
+    }
+}
+
+impl<T> ValueDecoder<T> for H256 {
+    fn decode(value: Value<T>) -> Result<Self, ValueDecoderError>
+    where
+        Self: Sized,
+        T: std::fmt::Debug,
+    {
+        Ok(Self(ValueDecoder::decode(value)?))
+    }
+}
+
+impl<T> ValueDecoder<T> for H160 {
+    fn decode(value: Value<T>) -> Result<Self, ValueDecoderError>
+    where
+        Self: Sized,
+        T: std::fmt::Debug,
+    {
+        Ok(Self(ValueDecoder::decode(value)?))
+    }
+}
+
+impl<T> ValueDecoder<T> for U256 {
+    fn decode(value: Value<T>) -> Result<Self, ValueDecoderError>
+    where
+        Self: Sized,
+        T: std::fmt::Debug,
+    {
+        Ok(Self(ValueDecoder::decode(value)?))
+    }
+}
+
+impl<T> ValueDecoder<T> for H64 {
+    fn decode(value: Value<T>) -> Result<Self, ValueDecoderError>
+    where
+        Self: Sized,
+        T: std::fmt::Debug,
+    {
+        Ok(Self(ValueDecoder::decode(value)?))
+    }
+}
+
+impl<T> ValueDecoder<T> for Bloom {
+    fn decode(value: Value<T>) -> Result<Self, ValueDecoderError>
+    where
+        Self: Sized,
+        T: std::fmt::Debug,
+    {
+        Ok(Self(ValueDecoder::decode(value)?))
     }
 }

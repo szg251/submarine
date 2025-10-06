@@ -33,19 +33,6 @@ pub struct Event {
     pub params: String,
 }
 
-impl<T> ValueDecoder<T> for Vec<EventRecord> {
-    fn decode(value: Value<T>) -> Result<Vec<EventRecord>, ValueDecoderError>
-    where
-        T: std::fmt::Debug,
-    {
-        Vec::decode(value)?
-            .into_iter()
-            .map(EventRecord::decode)
-            .collect::<Result<Vec<_>, _>>()
-            .add_error_span("event_record")
-    }
-}
-
 impl<T> ValueDecoder<T> for EventRecord {
     fn decode(value: Value<T>) -> Result<EventRecord, ValueDecoderError>
     where
@@ -77,8 +64,8 @@ impl<T> ValueDecoder<T> for EventRecord {
                 field_name: "topics".to_string(),
                 span: String::new(),
             })
-            .and_then(Vec::decode)
-            .map(|vec| vec.iter().map(scale_value::stringify::to_string).collect())
+            .and_then(ValueDecoder::decode)
+            .map(|vec: Vec<Value<T>>| vec.iter().map(scale_value::stringify::to_string).collect())
             .add_error_span("topics")?;
 
         Ok(EventRecord {

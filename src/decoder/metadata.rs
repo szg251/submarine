@@ -682,3 +682,43 @@ impl<P, T, E> TryFind<P, E> for std::vec::IntoIter<T> {
         Ok(result)
     }
 }
+
+pub fn verify_pallet_metadata<'a>(
+    pallet_name: &str,
+    storage_types: impl AsRef<[(&'a str, (&'a [&'a str], &'a str))]>,
+    metadata: AnyRuntimeMetadata<'_>,
+) -> Result<(), MetadataError> {
+    let type_registry = metadata.type_registry();
+
+    storage_types.as_ref().iter().try_for_each(
+        |(storage_entry_name, (expected_key_types, expected_value_type))| {
+            let (key_types, value_type) = metadata
+                .pallet_metadata(pallet_name)?
+                .storage_entry(storage_entry_name)?
+                .types_as_str(type_registry)?;
+
+            if &value_type[..] != *expected_value_type {
+                Err(MetadataError::UnexpectedStorageValueType {
+                    expected: expected_value_type.to_string(),
+                    got: value_type,
+                    pallet_name: pallet_name.to_string(),
+                    storage_entry_name: storage_entry_name.to_string(),
+                })?
+            };
+
+            key_types.iter().enumerate().try_for_each(|(i, key_type)| {
+                let expected_key_type = expected_key_types.get(i).copied();
+                if Some(&key_type[..]) != expected_key_type {
+                    Err(MetadataError::UnexpectedStorageKeyType {
+                        expected: format!("{expected_key_type:?}"),
+                        got: key_type.to_string(),
+                        pallet_name: pallet_name.to_string(),
+                        storage_entry_name: storage_entry_name.to_string(),
+                    })
+                } else {
+                    Ok(())
+                }
+            })
+        },
+    )
+}

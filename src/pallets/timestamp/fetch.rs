@@ -10,6 +10,8 @@ use crate::{
     },
 };
 
+pub const PALLET_NAME: &str = "Timestamp";
+
 pub async fn fetch_timestamp(
     rpc: &NodeRPC,
     block_hash: &BlockHashHex,
@@ -17,7 +19,7 @@ pub async fn fetch_timestamp(
     runtime_version: &RuntimeVersion,
 ) -> Result<DateTime<Utc>, Error> {
     fetch(
-        "Timestamp",
+        PALLET_NAME,
         "Now",
         (),
         rpc,

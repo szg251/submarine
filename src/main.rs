@@ -5,7 +5,10 @@ use prettytable::{Table, row, table};
 use tracing::{Instrument, Level, debug, info, span, warn};
 
 use crate::{
-    decoder::{extrinsic::decode_extrinsic_any, metadata::AnyRuntimeMetadata},
+    decoder::{
+        extrinsic::decode_extrinsic_any,
+        metadata::{AnyRuntimeMetadata, verify_pallet_metadata},
+    },
     error::Error,
     node_rpc::{
         client::NodeRPC,
@@ -13,7 +16,7 @@ use crate::{
             BlockHashHex, BlockNumberHex, ChainMetadataBytes, ExtrinsicBytes, RuntimeVersion,
         },
     },
-    pallets::system::decoder::Phase,
+    pallets::{ethereum, system::decoder::Phase},
 };
 
 mod decoder;
@@ -148,7 +151,7 @@ async fn fetch_block(rpc: &NodeRPC, block_number: u32) -> Result<(), Error> {
     fetch_events(rpc, block_number, &block_hash, metadata, &runtime_version).await?;
 
     if pallets.contains("Ethereum") {
-        pallets::ethereum::verify_pallet_metadata(metadata)?;
+        verify_pallet_metadata(ethereum::PALLET_NAME, ethereum::STORAGE_TYPES, metadata)?;
 
         let ethereum_block =
             pallets::ethereum::fetch_block(rpc, &block_hash, metadata, &runtime_version)
@@ -172,7 +175,10 @@ async fn fetch_block(rpc: &NodeRPC, block_number: u32) -> Result<(), Error> {
                 "Parent Hash",
                 format!("0x{}", hex::encode(ethereum_block.header.parent_hash))
             ],
-            ["State Root",],
+            [
+                "State Root",
+                format!("0x{}", hex::encode(ethereum_block.header.state_root))
+            ],
             ["Mined By"]
         ];
 
