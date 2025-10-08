@@ -15,7 +15,7 @@ pub trait ValueDecoder<T> {
 
 #[derive(Debug, Error)]
 pub enum ValueDecoderError {
-    #[error("Value type {expected}, but got {got} at {span}")]
+    #[error("Expected value type of {expected}, but got {got} at {span}")]
     UnexpectedValueType {
         span: String,
         expected: String,
@@ -130,7 +130,34 @@ where
         .add_error_span(field_name)
 }
 
-/// Parse a `ValueDef::Composite(Composite::Named(_))` to a `HashMap`
+/// Decode a `ValueDef::Composite(Composite::Unnamed(vec))` Value with exactly one element
+pub fn decode_singleton<T, R>(value: Value<T>) -> Result<R, ValueDecoderError>
+where
+    T: std::fmt::Debug,
+    R: ValueDecoder<T>,
+{
+    match value.value {
+        ValueDef::Composite(Composite::Unnamed(mut vec)) => {
+            let fst = if vec.len() == 1 {
+                vec.pop().unwrap()
+            } else {
+                Err(ValueDecoderError::UnexpectedVectorLength {
+                    expected: 1,
+                    got: vec.len(),
+                    span: String::new(),
+                })?
+            };
+
+            Ok(R::decode(fst)?)
+        }
+        other => Err(ValueDecoderError::UnexpectedValueType {
+            span: String::new(),
+            expected: "ValueDef::Composite(Composite::Unnamed(_))".to_string(),
+            got: format!("{other:?}"),
+        }),
+    }
+}
+
 impl<T, R> ValueDecoder<T> for Vec<R>
 where
     R: ValueDecoder<T>,
@@ -180,34 +207,20 @@ where
         T: std::fmt::Debug,
     {
         match value.value {
-            ValueDef::Composite(Composite::Unnamed(mut vec)) => {
-                let fst = vec.pop().ok_or(ValueDecoderError::UnexpectedVectorLength {
-                    expected: 1,
-                    got: vec.len(),
-                    span: String::new(),
-                })?;
-                match fst.value {
-                    ValueDef::Composite(Composite::Unnamed(vec)) => {
-                        if vec.len() != N {
-                            Err(ValueDecoderError::UnexpectedVectorLength {
-                                expected: N,
-                                got: vec.len(),
-                                span: String::new(),
-                            })
-                        } else {
-                            let mut result = [Default::default(); N];
-                            vec.into_iter().enumerate().try_for_each(|(i, value)| {
-                                result[i] = ValueDecoder::decode(value)?;
-                                Ok::<(), ValueDecoderError>(())
-                            })?;
-                            Ok(result)
-                        }
-                    }
-                    other => Err(ValueDecoderError::UnexpectedValueType {
-                        expected: "ValueDef::Composite(Composite::Unnamed(_))".to_string(),
-                        got: format!("{other:?}"),
+            ValueDef::Composite(Composite::Unnamed(vec)) => {
+                if vec.len() != N {
+                    Err(ValueDecoderError::UnexpectedVectorLength {
+                        expected: N,
+                        got: vec.len(),
                         span: String::new(),
-                    }),
+                    })
+                } else {
+                    let mut result = [Default::default(); N];
+                    vec.into_iter().enumerate().try_for_each(|(i, value)| {
+                        result[i] = ValueDecoder::decode(value)?;
+                        Ok::<(), ValueDecoderError>(())
+                    })?;
+                    Ok(result)
                 }
             }
             other => Err(ValueDecoderError::UnexpectedValueType {

@@ -7,10 +7,7 @@ use ss58::Ss58AddressFormat;
 use tracing::{Instrument, Level, debug, info, span, warn};
 
 use crate::{
-    decoder::{
-        extrinsic::decode_extrinsic_any,
-        metadata::{AnyRuntimeMetadata, verify_pallet_metadata},
-    },
+    decoder::{extrinsic::decode_extrinsic_any, metadata::AnyRuntimeMetadata},
     error::Error,
     node_rpc::{
         client::NodeRPC,
@@ -102,6 +99,9 @@ async fn fetch_block(rpc: &NodeRPC, block_number: u32) -> Result<(), Error> {
     debug!(?metadata);
 
     let metadata = AnyRuntimeMetadata(&metadata);
+
+    info!("Metadata version: {}", metadata.version());
+
     let pallets = metadata.pallet_names()?;
 
     info!(?pallets);
@@ -175,8 +175,6 @@ async fn fetch_block(rpc: &NodeRPC, block_number: u32) -> Result<(), Error> {
     fetch_events(rpc, block_number, &block_hash, metadata, &runtime_version).await?;
 
     if pallets.contains("Ethereum") {
-        verify_pallet_metadata(ethereum::PALLET_NAME, ethereum::STORAGE_TYPES, metadata)?;
-
         let ethereum_block =
             pallets::ethereum::fetch_block(rpc, &block_hash, metadata, &runtime_version)
                 .instrument(span!(Level::INFO, "Fetch Ethereum block", ?block_hash))
@@ -280,7 +278,7 @@ async fn find_collator(
         .iter()
         .find_map(|log| match log {
             DigestItem::PreRuntime(consensus_engine_id, bytes) => {
-                if &consensus_engine_id[..] == "aura".as_bytes() {
+                if &consensus_engine_id[..] == "AURA".as_bytes() {
                     Some(Slot::decode(&mut &bytes[..]))
                 } else {
                     None

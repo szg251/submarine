@@ -9,7 +9,7 @@ use ethereum_types::{Bloom, H64};
 use scale_decode::ext::primitive_types::{H160, H256, U256};
 use scale_value::Value;
 
-use crate::decoder::value_decoder::{ValueDecoder, ValueDecoderError, get_field};
+use crate::decoder::value_decoder::{ValueDecoder, ValueDecoderError, decode_singleton, get_field};
 
 impl<T, Tx> ValueDecoder<T> for Block<Tx>
 where
@@ -112,7 +112,7 @@ impl<T> ValueDecoder<T> for H256 {
         Self: Sized,
         T: std::fmt::Debug,
     {
-        Ok(Self(ValueDecoder::decode(value)?))
+        Ok(Self(decode_singleton(value)?))
     }
 }
 
@@ -122,7 +122,7 @@ impl<T> ValueDecoder<T> for H160 {
         Self: Sized,
         T: std::fmt::Debug,
     {
-        Ok(Self(ValueDecoder::decode(value)?))
+        Ok(Self(decode_singleton(value)?))
     }
 }
 
@@ -132,7 +132,7 @@ impl<T> ValueDecoder<T> for U256 {
         Self: Sized,
         T: std::fmt::Debug,
     {
-        Ok(Self(ValueDecoder::decode(value)?))
+        Ok(Self(decode_singleton(value)?))
     }
 }
 
@@ -142,7 +142,7 @@ impl<T> ValueDecoder<T> for H64 {
         Self: Sized,
         T: std::fmt::Debug,
     {
-        Ok(Self(ValueDecoder::decode(value)?))
+        Ok(Self(decode_singleton(value)?))
     }
 }
 
@@ -152,6 +152,6 @@ impl<T> ValueDecoder<T> for Bloom {
         Self: Sized,
         T: std::fmt::Debug,
     {
-        Ok(Self(ValueDecoder::decode(value)?))
+        Ok(Self(decode_singleton(value)?))
     }
 }

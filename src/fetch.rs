@@ -5,7 +5,7 @@ use crate::{
     decoder::{
         metadata::AnyRuntimeMetadata,
         storage::{AnyStorageValue, decode_storage_value_any, encode_storage_key_any},
-        value_decoder::ValueDecoder,
+        value_decoder::{ValueDecoder, WithErrorSpan},
     },
     error::Error,
     node_rpc::{
@@ -28,6 +28,8 @@ where
     K: IntoStorageKeys + std::fmt::Debug,
 {
     let storage_keys_str = format!("{storage_keys:?}");
+    let full_name_str =
+        format!("pallet stoge: {pallet_name}:{storage_entry_name}:{storage_keys_str}");
     let key = encode_storage_key_any(
         pallet_name,
         storage_entry_name,
@@ -57,7 +59,11 @@ where
     )?;
 
     Ok(match value {
-        AnyStorageValue::Legacy(value) => ValueDecoder::decode(*value)?,
-        AnyStorageValue::Modern(value) => ValueDecoder::decode(value)?,
+        AnyStorageValue::Legacy(value) => {
+            ValueDecoder::decode(*value).add_error_span(&full_name_str)?
+        }
+        AnyStorageValue::Modern(value) => {
+            ValueDecoder::decode(value).add_error_span(&full_name_str)?
+        }
     })
 }

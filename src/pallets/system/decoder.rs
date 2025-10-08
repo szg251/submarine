@@ -85,11 +85,15 @@ impl<T> ValueDecoder<T> for Phase {
             ValueDef::Variant(Variant { name, values }) => match &name[..] {
                 "ApplyExtrinsic" => match values {
                     Composite::Unnamed(mut vec) => {
-                        let fst = vec.pop().ok_or(ValueDecoderError::UnexpectedVectorLength {
-                            expected: 1,
-                            got: vec.len(),
-                            span: String::new(),
-                        })?;
+                        let fst = if vec.len() == 1 {
+                            vec.pop().unwrap()
+                        } else {
+                            Err(ValueDecoderError::UnexpectedVectorLength {
+                                expected: 1,
+                                got: vec.len(),
+                                span: String::new(),
+                            })?
+                        };
 
                         match fst.value {
                             ValueDef::Primitive(Primitive::U128(extrinsic_idx)) => {
@@ -150,11 +154,15 @@ impl<T> ValueDecoder<T> for Event {
                 name,
                 values: Composite::Unnamed(mut vec),
             }) => {
-                let fst = vec.pop().ok_or(ValueDecoderError::UnexpectedVectorLength {
-                    expected: 1,
-                    got: vec.len(),
-                    span: String::new(),
-                })?;
+                let fst = if vec.len() == 1 {
+                    vec.pop().unwrap()
+                } else {
+                    Err(ValueDecoderError::UnexpectedVectorLength {
+                        expected: 1,
+                        got: vec.len(),
+                        span: String::new(),
+                    })?
+                };
                 let (action, params) = match fst.value {
                     ValueDef::Variant(Variant { name, values }) => Ok((name, values.to_string())),
                     other => Err(ValueDecoderError::UnexpectedValueType {
