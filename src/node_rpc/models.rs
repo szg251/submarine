@@ -41,8 +41,12 @@ pub struct BlockHeader {
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct Digest {
-    pub logs: Vec<String>,
+    pub logs: Vec<LogBytes>,
 }
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(transparent)]
+pub struct LogBytes(#[serde(deserialize_with = "deserialize_hex")] pub Vec<u8>);
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct SignedBlock {
@@ -78,6 +82,14 @@ pub struct SyncState {
     pub starting_block: u64,
     pub current_block: u64,
     pub highest_block: u64,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SystemProperties {
+    pub ss58_format: u16,
+    pub token_decimals: u64,
+    pub token_symbol: String,
 }
 
 /// Chain Metadata as a bytestring

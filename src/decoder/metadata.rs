@@ -3,6 +3,7 @@ use std::collections::HashSet;
 use frame_metadata::{RuntimeMetadata, decode_different::DecodeDifferent};
 use scale_info::PortableRegistry;
 use thiserror::Error;
+use tracing::debug;
 
 #[derive(Debug, Error)]
 pub enum MetadataError {
@@ -387,6 +388,10 @@ impl<'a> AnyStorageEntry<'a> {
 
                 match entry.ty {
                     frame_metadata::v14::StorageEntryType::Plain(value) => {
+                        // let resolved = type_registry.resolve(value.id);
+                        // resolved.map(|x| x.)
+
+                        debug!(ty = ?type_registry.resolve(value.id).unwrap().type_def);
                         Ok((vec![], resolve_type_to_str(value.id, type_registry)?))
                     }
                     frame_metadata::v14::StorageEntryType::Map { key, value, .. } => Ok((
@@ -425,6 +430,7 @@ impl<'a> AnyStorageEntry<'a> {
     }
 }
 
+/// Resolve types to a string (does not handle builtin types)
 fn resolve_type_to_str(
     type_id: u32,
     type_registry: &PortableRegistry,

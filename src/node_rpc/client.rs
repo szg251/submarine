@@ -4,7 +4,7 @@ use jsonrpsee::{
     ws_client::{WsClient, WsClientBuilder},
 };
 
-use crate::node_rpc::models::SyncState;
+use crate::node_rpc::models::{SyncState, SystemProperties};
 
 pub use super::error::NodeRPCError;
 use super::models::{
@@ -55,6 +55,10 @@ impl NodeRPC {
 
     pub async fn system_sync_state(&self) -> Result<SyncState, NodeRPCError> {
         self.request("system_syncState", rpc_params![]).await
+    }
+
+    pub async fn system_properties(&self) -> Result<SystemProperties, NodeRPCError> {
+        self.request("system_properties", rpc_params![]).await
     }
 
     pub async fn chain_get_header(

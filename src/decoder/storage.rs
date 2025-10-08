@@ -231,8 +231,6 @@ pub fn decode_storage_value_any(
                 encode_storage_key("System", "Events", keys, metadata, &historic_types_for_spec)
                     .unwrap();
 
-            println!("{:?}", hex::encode(key));
-
             Ok(AnyStorageValue::Legacy(Box::new(decode_storage_value(
                 pallet_name,
                 storage_entry_name,

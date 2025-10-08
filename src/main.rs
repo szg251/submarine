@@ -2,6 +2,8 @@ use clap::Parser;
 use frame_metadata::RuntimeMetadataPrefixed;
 use parity_scale_codec::Decode;
 use prettytable::{Table, row, table};
+use sp_runtime::DigestItem;
+use ss58::Ss58AddressFormat;
 use tracing::{Instrument, Level, debug, info, span, warn};
 
 use crate::{
@@ -13,10 +15,11 @@ use crate::{
     node_rpc::{
         client::NodeRPC,
         models::{
-            BlockHashHex, BlockNumberHex, ChainMetadataBytes, ExtrinsicBytes, RuntimeVersion,
+            BlockHashHex, BlockNumberHex, ChainMetadataBytes, ExtrinsicBytes, LogBytes,
+            RuntimeVersion,
         },
     },
-    pallets::{ethereum, system::decoder::Phase},
+    pallets::{ethereum, session, system::decoder::Phase},
 };
 
 mod decoder;
@@ -72,13 +75,16 @@ async fn main() -> Result<(), Error> {
         sync_state.starting_block, sync_state.current_block, sync_state.highest_block
     );
 
-    fetch_block(&rpc, args.block_number)
+    if let Err(error) = fetch_block(&rpc, args.block_number)
         .instrument(span!(
             Level::INFO,
-            "Fetch block",
+            "fetch block",
             block_number = args.block_number
         ))
-        .await?;
+        .await
+    {
+        warn!(%error);
+    }
 
     Ok(())
 }
@@ -105,8 +111,25 @@ async fn fetch_block(rpc: &NodeRPC, block_number: u32) -> Result<(), Error> {
 
     let runtime_version = rpc.state_get_runtime_version(&block_hash).await?;
 
+    let digest_logs = signed_block
+        .block
+        .header
+        .digest
+        .logs
+        .into_iter()
+        .map(|LogBytes(bytes)| {
+            DigestItem::decode(&mut &bytes[..]).map_err(Error::ParsingDigestLogsFailed)
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+
     let timestamp =
         pallets::timestamp::fetch_timestamp(rpc, &block_hash, metadata, &runtime_version).await?;
+
+    let block_validator =
+        find_validator(rpc, &digest_logs, &block_hash, metadata, &runtime_version).await?;
+
+    let block_collator =
+        find_collator(rpc, &digest_logs, &block_hash, metadata, &runtime_version).await?;
 
     let mut block_table = table![
         ["Timestamp", timestamp],
@@ -116,7 +139,8 @@ async fn fetch_block(rpc: &NodeRPC, block_number: u32) -> Result<(), Error> {
         ["Parent Hash", signed_block.block.header.parent_hash],
         ["State Root", signed_block.block.header.state_root],
         ["Extrinsics Root", signed_block.block.header.extrinsics_root],
-        ["Validator"],
+        ["Validator", block_validator.unwrap_or(String::from("-"))],
+        ["Collator", block_collator.unwrap_or(String::from("-"))],
         ["Ref Time"],
         ["Spec Version", runtime_version.spec_version]
     ];
@@ -188,6 +212,111 @@ async fn fetch_block(rpc: &NodeRPC, block_number: u32) -> Result<(), Error> {
     }
 
     Ok(())
+}
+
+async fn find_validator(
+    rpc: &NodeRPC,
+    digest_logs: &[DigestItem],
+    block_hash: &BlockHashHex,
+    metadata: AnyRuntimeMetadata<'_>,
+    runtime_version: &RuntimeVersion,
+) -> Result<Option<String>, Error> {
+    let babe_pre_digest_log = digest_logs
+        .iter()
+        .find_map(|log| match log {
+            DigestItem::PreRuntime(consensus_engine_id, bytes) => {
+                if &consensus_engine_id[..] == "BABE".as_bytes() {
+                    Some(sc_consensus_babe::PreDigest::decode(&mut &bytes[..]))
+                } else {
+                    None
+                }
+            }
+            _ => None,
+        })
+        .transpose()
+        .map_err(Error::ParsingDigestLogsFailed)?;
+
+    debug!(?babe_pre_digest_log);
+
+    Ok(match babe_pre_digest_log {
+        Some(babe_pre_digest_log) => {
+            let authority_index = babe_pre_digest_log.authority_index();
+
+            let validators =
+                session::fetch_validators(rpc, block_hash, metadata, runtime_version).await?;
+
+            let block_validator_pubkey = validators
+                .get(authority_index as usize)
+                .ok_or(Error::ValidatorNotFoundForIndex(authority_index))?
+                .0;
+
+            let address_format = match rpc.system_properties().await?.ss58_format {
+                0 => Ss58AddressFormat::Polkadot,
+                2 => Ss58AddressFormat::Kusama,
+                42 => Ss58AddressFormat::Substrate,
+                137 => Ss58AddressFormat::Vara,
+                other => Ss58AddressFormat::Custom(other),
+            };
+
+            Some(ss58::encode(&block_validator_pubkey, address_format))
+        }
+        None => None,
+    })
+}
+
+/// Unit type wrapper that represents a slot.
+#[derive(Debug, parity_scale_codec::Encode, parity_scale_codec::Decode, Clone, Copy)]
+#[repr(transparent)]
+pub struct Slot(pub u64);
+
+async fn find_collator(
+    rpc: &NodeRPC,
+    digest_logs: &[DigestItem],
+    block_hash: &BlockHashHex,
+    metadata: AnyRuntimeMetadata<'_>,
+    runtime_version: &RuntimeVersion,
+) -> Result<Option<String>, Error> {
+    let aura_pre_digest_log = digest_logs
+        .iter()
+        .find_map(|log| match log {
+            DigestItem::PreRuntime(consensus_engine_id, bytes) => {
+                if &consensus_engine_id[..] == "aura".as_bytes() {
+                    Some(Slot::decode(&mut &bytes[..]))
+                } else {
+                    None
+                }
+            }
+            _ => None,
+        })
+        .transpose()
+        .map_err(Error::ParsingDigestLogsFailed)?;
+
+    debug!(?aura_pre_digest_log);
+
+    Ok(match aura_pre_digest_log {
+        Some(slot) => {
+            let validators =
+                session::fetch_validators(rpc, block_hash, metadata, runtime_version).await?;
+
+            let authority_index = slot.0 % validators.len() as u64;
+
+            let block_validator_pubkey = validators
+                .get(authority_index as usize)
+                .ok_or(Error::ValidatorNotFoundForIndex(authority_index as u32))?
+                .0;
+
+            let address_format = match rpc.system_properties().await?.ss58_format {
+                0 => Ss58AddressFormat::Polkadot,
+                2 => Ss58AddressFormat::Kusama,
+                42 => Ss58AddressFormat::Substrate,
+                137 => Ss58AddressFormat::Vara,
+                other => Ss58AddressFormat::Custom(other),
+            };
+
+            Some(ss58::encode(&block_validator_pubkey, address_format))
+        }
+        None => None,
+    })
 }
 
 async fn fetch_events(

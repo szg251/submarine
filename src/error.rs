@@ -46,6 +46,12 @@ pub enum Error {
     #[error("Failed to parse RuntimeMetadata: {0}")]
     ParsingRuntimeMetadataFailed(parity_scale_codec::Error),
 
+    #[error("Failed to parse Digest Logs: {0}")]
+    ParsingDigestLogsFailed(parity_scale_codec::Error),
+
+    #[error("Couldn't find validator by authority index {0}")]
+    ValidatorNotFoundForIndex(u32),
+
     #[error(transparent)]
     MetadataError(#[from] MetadataError),
 }

@@ -12,11 +12,14 @@ ethereum = "0.18.2"
 ethereum-types = "0.15.1"
 frame-decode = { version = "0.10.0", features = ["legacy"] }
 frame-metadata = { version = "23.0.0", features = ["legacy", "serde"] }
+futures = "0.3.31"
 hex = "0.4.3"
 jsonrpsee = { version = "0.26.0", features = ["async-client", "ws-client"] }
 parity-scale-codec = "3.7.5"
 prettytable-rs = "0.10.0"
 rayon = "1.11.0"
+sc-consensus-babe = "0.53.0"
+sc-consensus-slots = "0.52.0"
 scale-decode = "0.16.0"
 scale-encode = "0.10.0"
 scale-info = "2.11.6"
@@ -25,9 +28,10 @@ scale-value = "0.18.0"
 serde = { version = "1.0.226", features = ["derive"] }
 serde_json = "1.0.145"
 serde_yaml = "0.9.34"
+sp-runtime = "44.0.0"
+ss58 = "0.0.2"
 subxt-signer = "0.44.0"
 thiserror = "2.0.16"
 tokio = { version = "1.47.1", features = ["rt-multi-thread"] }
-tokio-stream = "0.1.17"
 tracing = "0.1.41"
 tracing-subscriber = "0.3.20"

@@ -1,7 +1,10 @@
 use std::collections::HashMap;
 
 /// Pallet defined storage parsers and verificators for pallet-ethereum
-use ethereum::{Block, Header, LegacyTransaction, TransactionAction, legacy::TransactionSignature};
+use ethereum::{
+    Block, Header, LegacyTransaction, TransactionAction, TransactionV2,
+    legacy::TransactionSignature,
+};
 use ethereum_types::{Bloom, H64};
 use scale_decode::ext::primitive_types::{H160, H256, U256};
 use scale_value::Value;
@@ -84,6 +87,16 @@ impl<T> ValueDecoder<T> for TransactionAction {
 }
 
 impl<T> ValueDecoder<T> for TransactionSignature {
+    fn decode(value: Value<T>) -> Result<Self, ValueDecoderError>
+    where
+        Self: Sized,
+        T: std::fmt::Debug,
+    {
+        todo!()
+    }
+}
+
+impl<T> ValueDecoder<T> for TransactionV2 {
     fn decode(value: Value<T>) -> Result<Self, ValueDecoderError>
     where
         Self: Sized,
